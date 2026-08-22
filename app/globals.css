@@ -100,6 +100,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 .film-meta { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 .overview { display: -webkit-box; margin: 13px 0 0; overflow: hidden; color: #556057; font-size: 13px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .film-actions { display: flex; align-items: center; justify-content: flex-end; margin: 7px 11px 12px; }
+.watched-button { min-height: 40px; padding: 0 13px; border: 1px solid #b7cdbd; border-radius: 8px; background: var(--accent-soft); color: var(--accent-dark); font-size: 13px; font-weight: 750; transition: background .15s, border-color .15s, transform .15s; }
+.watched-button:hover { border-color: #91b09b; background: #d9e8dc; transform: translateY(-1px); }
 .remove-button { display: inline-grid; width: 42px; height: 42px; padding: 0; place-items: center; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--danger); transform: none; touch-action: manipulation; transition: background .15s, border-color .15s; }
 .remove-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; animation: none; transform: none; }
 
@@ -112,6 +114,9 @@ ul { margin: 0; padding: 0; list-style: none; }
   .film-grid .remove-button svg { animation: none; transform: none; }
 }
 .empty-list { margin: 0; padding: 46px 16px; background: rgba(255, 255, 255, .5); border: 1px dashed #b8c0ba; border-radius: 10px; color: var(--muted); text-align: center; font-size: 14px; }
+.history-section { margin-top: 62px; }
+.history-card { opacity: .9; }
+.history-card .poster { filter: saturate(.78); }
 
 .details-dialog { width: min(900px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 0; overflow: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(18, 31, 23, .28); }
 .details-dialog::backdrop { background: rgba(20, 29, 24, .62); }

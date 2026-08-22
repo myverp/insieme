@@ -15,6 +15,8 @@ type Movie = {
   rating: number;
 };
 
+type HistoryMovie = Movie & { watchedAt: string };
+
 type MovieDetails = {
   id: number;
   title: string;
@@ -61,6 +63,7 @@ const EMPTY_FILTERS: SearchFilters = { genre: "", director: "", decade: "", minR
 
 export default function Watchlist() {
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
+  const [history, setHistory] = useState<HistoryMovie[]>([]);
   const [results, setResults] = useState<Movie[]>([]);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
@@ -85,10 +88,11 @@ export default function Watchlist() {
 
   const refreshWatchlist = useCallback(async () => {
     const response = await fetch("/api/watchlist", { cache: "no-store" });
-    const data = (await response.json()) as { movies?: Movie[]; error?: string };
+    const data = (await response.json()) as { movies?: Movie[]; history?: HistoryMovie[]; error?: string };
     if (!response.ok) throw new Error(data.error ?? "The shared watchlist is unavailable.");
     setWatchlist(data.movies ?? []);
-    return data.movies ?? [];
+    setHistory(data.history ?? []);
+    return { movies: data.movies ?? [], history: data.history ?? [] };
   }, []);
 
   useEffect(() => {
@@ -96,7 +100,7 @@ export default function Watchlist() {
 
     async function loadSharedWatchlist() {
       try {
-        const sharedMovies = await refreshWatchlist();
+        const sharedState = await refreshWatchlist();
         if (cancelled) return;
 
         const saved = window.localStorage.getItem(STORAGE_KEY);
@@ -104,7 +108,7 @@ export default function Watchlist() {
           try {
             const localMovies = JSON.parse(saved) as Movie[];
             if (Array.isArray(localMovies) && localMovies.length) {
-              const sharedIds = new Set(sharedMovies.map((movie) => movie.id));
+              const sharedIds = new Set([...sharedState.movies, ...sharedState.history].map((movie) => movie.id));
               await Promise.all(localMovies.filter((movie) => !sharedIds.has(movie.id)).map((movie) => saveMovie(movie)));
               if (!cancelled) await refreshWatchlist();
             }
@@ -203,7 +207,7 @@ export default function Watchlist() {
   const activeFilterCount = [filters.genre, filters.director.trim(), filters.decade, filters.minRating].filter(Boolean).length;
 
   async function addMovie(movie: Movie) {
-    const alreadyAdded = watchlist.some((item) => item.id === movie.id);
+    const alreadyAdded = watchlist.some((item) => item.id === movie.id) || history.some((item) => item.id === movie.id);
     if (alreadyAdded) return;
 
     setWatchlist((current) => [...current, movie]);
@@ -215,6 +219,20 @@ export default function Watchlist() {
       const errorMessage = error instanceof Error ? error.message : "The film could not be added.";
       setMessage(errorMessage);
       toast.error(errorMessage);
+    }
+  }
+
+  async function markWatched(movie: Movie) {
+    setWatchlist((current) => current.filter((item) => item.id !== movie.id));
+    try {
+      const watchedAt = await markMovieWatched(movie.id);
+      setHistory((current) => [{ ...movie, watchedAt }, ...current.filter((item) => item.id !== movie.id)]);
+      toast.success(`Marked “${movie.title}” as watched ♡`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "The film could not be marked as watched.";
+      setMessage(errorMessage);
+      toast.error(errorMessage);
+      void refreshWatchlist().catch(() => undefined);
     }
   }
 
@@ -374,6 +392,7 @@ export default function Watchlist() {
               <AnimatePresence initial={false} mode="popLayout">
                 {results.map((movie) => {
                   const added = watchlist.some((item) => item.id === movie.id);
+                  const watched = history.some((item) => item.id === movie.id);
                   return (
                     <motion.li
                       className="group"
@@ -398,8 +417,8 @@ export default function Watchlist() {
                     </span>
                   </button>
                   <div className="result-actions">
-                    <button type="button" onClick={() => void addMovie(movie)} disabled={added}>
-                      {added ? "Added" : "Add"}
+                    <button type="button" onClick={() => void addMovie(movie)} disabled={added || watched}>
+                      {watched ? "Watched" : added ? "Added" : "Add"}
                     </button>
                   </div>
                     </motion.li>
@@ -448,6 +467,13 @@ export default function Watchlist() {
                   </button>
                   <div className="film-actions">
                     <button
+                      className="watched-button"
+                      type="button"
+                      onClick={() => void markWatched(movie)}
+                    >
+                      Watched
+                    </button>
+                    <button
                       className="remove-button"
                       type="button"
                       onClick={() => removeMovie(movie)}
@@ -463,6 +489,46 @@ export default function Watchlist() {
           </ul>
         ) : (
           <p className="empty-list">Your list is empty. Search for a film above and press Add.</p>
+        )}
+      </section>
+
+      <section className="list-section history-section" aria-labelledby="history-heading">
+        <div className="list-heading">
+          <h2 id="history-heading">Історія переглядіііів!&lt;3</h2>
+        </div>
+
+        {history.length ? (
+          <ul className="film-grid history-grid">
+            <AnimatePresence initial={false} mode="popLayout">
+              {history.map((movie) => (
+                <motion.li
+                  className="group history-card"
+                  key={movie.id}
+                  layout={!shouldReduceMotion}
+                  initial={shouldReduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
+                >
+                  <button
+                    className="film-details-trigger"
+                    type="button"
+                    onClick={() => void openDetails(movie)}
+                    aria-haspopup="dialog"
+                    aria-label={`View details for ${movie.title}`}
+                  >
+                    <Poster movie={movie} size="card" />
+                    <span className="film-info">
+                      <span className="film-title" title={movie.title}>{movie.title}</span>
+                      <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
+                      {movie.overview ? <span className="overview">{movie.overview}</span> : null}
+                    </span>
+                  </button>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+        ) : (
+          <p className="empty-list">Films marked as watched will appear here.</p>
         )}
       </section>
 
@@ -589,8 +655,19 @@ async function deleteMovie(id: number) {
   if (!response.ok) throw new Error(data.error ?? "The film could not be removed.");
 }
 
+async function markMovieWatched(id: number) {
+  const response = await fetch(`/api/watchlist?id=${id}`, { method: "PATCH" });
+  const data = (await response.json()) as { watchedAt?: string; error?: string };
+  if (!response.ok || !data.watchedAt) throw new Error(data.error ?? "The film could not be marked as watched.");
+  return data.watchedAt;
+}
+
 function formatDate(date: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatWatchedDate(date: string) {
+  return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date));
 }
 
 function TrashIcon() {

@@ -17,25 +17,33 @@ type MovieRow = {
   poster: string;
   overview: string;
   rating: number;
+  watched_at: string | null;
 };
 
 export async function GET() {
   const config = getConfig();
   if (!config) return unavailable();
 
-  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?select=id,title,year,poster,overview,rating&order=added_at.asc`, {
+  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?select=id,title,year,poster,overview,rating,watched_at&order=added_at.asc`, {
     headers: databaseHeaders(config),
     cache: "no-store",
   });
   const data = await response.json();
   if (!response.ok) return databaseError(data, response.status);
 
-  const movies = await Promise.all((data as MovieRow[]).map(async (row) => ({
+  const rows = data as MovieRow[];
+  const movies = await Promise.all(rows.filter((row) => !row.watched_at).map(async (row) => ({
     ...toMovie(row),
     rating: await getImdbRating({ tmdbId: Number(row.id), title: row.title, year: row.year }),
   })));
+  const history = await Promise.all(rows.filter((row): row is MovieRow & { watched_at: string } => Boolean(row.watched_at)).map(async (row) => ({
+    ...toMovie(row),
+    watchedAt: row.watched_at,
+    rating: await getImdbRating({ tmdbId: Number(row.id), title: row.title, year: row.year }),
+  })));
+  history.sort((first, second) => new Date(second.watchedAt).getTime() - new Date(first.watchedAt).getTime());
 
-  return NextResponse.json({ movies }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ movies, history }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {
@@ -74,7 +82,7 @@ export async function DELETE(request: NextRequest) {
   const id = Number(request.nextUrl.searchParams.get("id"));
   if (!Number.isSafeInteger(id) || id <= 0) return NextResponse.json({ error: "Invalid film id." }, { status: 400 });
 
-  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?id=eq.${id}`, {
+  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?id=eq.${id}&watched_at=is.null`, {
     method: "DELETE",
     headers: databaseHeaders(config, true),
     cache: "no-store",
@@ -82,6 +90,32 @@ export async function DELETE(request: NextRequest) {
   if (!response.ok) return databaseError(await response.json().catch(() => null), response.status);
 
   return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(request: NextRequest) {
+  const config = getConfig();
+  if (!config) return unavailable();
+
+  const id = Number(request.nextUrl.searchParams.get("id"));
+  if (!Number.isSafeInteger(id) || id <= 0) return NextResponse.json({ error: "Invalid film id." }, { status: 400 });
+
+  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?id=eq.${id}&watched_at=is.null`, {
+    method: "PATCH",
+    headers: {
+      ...databaseHeaders(config, true),
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({ watched_at: new Date().toISOString() }),
+    cache: "no-store",
+  });
+  const data = await response.json().catch(() => null) as MovieRow[] | { message?: string } | null;
+  if (!response.ok) return databaseError(data, response.status);
+
+  const watchedAt = Array.isArray(data) ? data[0]?.watched_at : null;
+  if (!watchedAt) return NextResponse.json({ error: "The film is no longer on the watchlist." }, { status: 409 });
+
+  return NextResponse.json({ ok: true, watchedAt });
 }
 
 function getConfig() {

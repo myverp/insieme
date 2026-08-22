@@ -8,6 +8,10 @@ The shared place where two people discover films, save possibilities, and decide
 
 The shared collection of films being considered for a future movie night. A film remains on the watchlist until it is removed or later marked as watched. _Avoid:_ queue or library.
 
+## Watched history
+
+The separate record of films from the watchlist that have been marked as watched, including when they were watched. _Avoid:_ completed list.
+
 ## Film
 
 A movie that can be discovered, inspected, and added to the watchlist. Use “film” in product language; use “movie” only when an external service or code interface already uses that term.
