@@ -6,7 +6,15 @@ The shared place where two people discover films, save possibilities, and decide
 
 ## Watchlist
 
-The shared collection of films being considered for a future movie night. A film remains on the watchlist until it is removed or later marked as watched. _Avoid:_ queue or library.
+A named collection of films that one or more Members are considering for a future movie night. Every new user starts with one Watchlist and can create or join others. A film remains on the Watchlist until it is removed or later marked as watched. _Avoid:_ separate personal/shared list types, queue, or library.
+
+## Member
+
+A person who has joined a Watchlist and can discover, add, remove, and mark films as watched with the group. A person can be a Member of several Watchlists. _Avoid:_ follower.
+
+## Invitation
+
+A private link that allows another person to become a Member of a Watchlist. _Avoid:_ public link or share.
 
 ## Watched history
 

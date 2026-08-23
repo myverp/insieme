@@ -28,8 +28,18 @@ button:disabled { cursor: default; opacity: .55; }
 .insieme-toast-close[data-close-button] { border-color: var(--border); background: var(--surface); color: var(--text); }
 
 .app-shell { width: min(1220px, calc(100% - 48px)); margin: 0 auto; padding: 42px 0 80px; }
-.simple-header { position: relative; display: flex; align-items: center; gap: 18px; min-height: 72px; margin-bottom: 18px; overflow: hidden; }
+.simple-header { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 72px; margin-bottom: 18px; overflow: hidden; }
 .simple-header h1 { position: relative; z-index: 1; display: inline-flex; align-items: flex-start; margin: 0; color: var(--text); font-family: var(--font-site); font-size: clamp(34px, 5vw, 48px); font-weight: 650; letter-spacing: -.035em; }
+.insieme-logo { display: inline-flex; align-items: flex-start; color: inherit; line-height: 1; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-actions select, .header-actions > button, .logout-form button { min-height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); font-weight: 700; }
+.header-actions select { max-width: 190px; color: var(--text); }
+.header-actions > button:hover, .logout-form button:hover { border-color: #b8b2a6; color: var(--text); }
+.header-actions > button:nth-of-type(2) { border-color: var(--accent); background: var(--accent); color: #fff; }
+.header-actions > button:nth-of-type(2):hover { background: var(--accent-dark); }
+.logout-form { margin: 0; }
+.logout-form button { min-height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); font-weight: 700; }
+.logout-form button:hover { border-color: #b8b2a6; color: var(--text); }
 .flower-mark { position: relative; width: 25px; height: 25px; display: inline-block; flex: none; margin: -2px 0 0 8px; transform: rotate(8deg); }
 .flower-mark i { position: absolute; top: 1px; left: 8px; width: 9px; height: 13px; border-radius: 70% 70% 62% 62%; background: #e887a4; transform-origin: 50% 11.5px; }
 .flower-mark i:nth-child(2) { transform: rotate(72deg); }
@@ -64,6 +74,27 @@ button:disabled { cursor: default; opacity: .55; }
 .filter-search-button:hover:not(:disabled) { background: #d9e8dc; }
 .reset-filters { border: 1px solid transparent; background: transparent; color: var(--muted); }
 .reset-filters:hover { border-color: var(--border); background: #f5f1e9; color: var(--text); }
+
+.auth-shell { min-height: 100vh; display: grid; padding: 32px 20px; place-items: center; }
+.auth-card { width: min(420px, 100%); padding: 32px; border: 1px solid var(--border); border-radius: 18px; background: rgba(255, 253, 250, .95); box-shadow: 0 16px 50px rgba(50, 55, 41, .1); }
+.auth-brand { margin-bottom: 20px; color: var(--text); font-size: 34px; font-weight: 650; letter-spacing: -.035em; }
+.auth-card h1 { margin: 0 0 22px; font-size: 28px; letter-spacing: -.03em; }
+.auth-card form { display: grid; gap: 8px; }
+.auth-card label { margin-top: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.auth-card input { height: 46px; padding: 0 13px; border: 1px solid #aaa99e; border-radius: 10px; background: #fff; color: var(--text); }
+.auth-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47, 98, 72, .13); outline: 0; }
+.auth-card form button { min-height: 46px; margin-top: 14px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent); color: #fff; font-weight: 750; }
+.auth-card form button:hover { background: var(--accent-dark); }
+.auth-error, .auth-message { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+.auth-error { background: #fbefed; color: #84352b; }
+.auth-message { background: var(--accent-soft); color: var(--accent-dark); }
+.auth-switch { margin-top: 20px; color: var(--muted); font-size: 14px; }
+.auth-switch p { margin: 0; }
+.auth-switch a { color: var(--accent-dark); font-weight: 700; text-underline-offset: 3px; }
+.invitation-copy { margin: -10px 0 18px; color: var(--muted); line-height: 1.5; }
+.invitation-auth-actions { display: grid; gap: 10px; }
+.invitation-auth-actions a { min-height: 44px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 10px; color: var(--accent-dark); font-weight: 750; text-decoration: none; }
+.invitation-auth-actions .primary-link { border-color: var(--accent); background: var(--accent); color: #fff; }
 
 ul { margin: 0; padding: 0; list-style: none; }
 .results-block { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--border); }
@@ -235,6 +266,9 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 @media (max-width: 700px) {
+  .simple-header { align-items: flex-start; flex-direction: column; overflow: visible; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+  .header-actions select { min-width: 0; flex: 1 1 160px; }
   .app-shell { width: min(100% - 24px, 1180px); padding-top: 24px; }
   .search-panel { padding: 16px; }
   .search-results { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

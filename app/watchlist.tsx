@@ -1,7 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/app/lib/supabase/client";
+import { logout } from "@/app/auth/actions";
+import { InsiemeLogo } from "@/app/logo";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -61,7 +64,10 @@ type SearchFilters = {
 
 const EMPTY_FILTERS: SearchFilters = { genre: "", director: "", decade: "", minRating: "", sort: "popularity.desc" };
 
-export default function Watchlist() {
+type WatchlistSummary = { id: string; name: string };
+
+export default function Watchlist({ watchlists, watchlistId, joined }: { watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean }) {
+  const router = useRouter();
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [history, setHistory] = useState<HistoryMovie[]>([]);
   const [results, setResults] = useState<Movie[]>([]);
@@ -75,6 +81,7 @@ export default function Watchlist() {
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
+  const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
   const shouldReduceMotion = useReducedMotion();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailsDialog = useRef<HTMLDialogElement>(null);
@@ -86,14 +93,18 @@ export default function Watchlist() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  useEffect(() => {
+    if (joined) toast.success("You joined the Watchlist.");
+  }, [joined]);
+
   const refreshWatchlist = useCallback(async () => {
-    const response = await fetch("/api/watchlist", { cache: "no-store" });
+    const response = await fetch(`/api/watchlist?selected=${encodeURIComponent(watchlistId)}`, { cache: "no-store" });
     const data = (await response.json()) as { movies?: Movie[]; history?: HistoryMovie[]; error?: string };
     if (!response.ok) throw new Error(data.error ?? "The shared watchlist is unavailable.");
     setWatchlist(data.movies ?? []);
     setHistory(data.history ?? []);
     return { movies: data.movies ?? [], history: data.history ?? [] };
-  }, []);
+  }, [watchlistId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,14 +141,10 @@ export default function Watchlist() {
 
   useEffect(() => {
     if (!ready) return;
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    if (!url || !key) return;
-
-    const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+    const supabase = createClient();
     const channel = supabase
-      .channel("insieme-watchlist")
-      .on("postgres_changes", { event: "*", schema: "public", table: "watchlist_movies" }, () => {
+      .channel(`insieme-watchlist-${watchlistId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "watchlist_movies", filter: `watchlist_id=eq.${watchlistId}` }, () => {
         void refreshWatchlist().catch(() => undefined);
       })
       .subscribe();
@@ -151,7 +158,64 @@ export default function Watchlist() {
       window.removeEventListener("focus", refreshOnFocus);
       void supabase.removeChannel(channel);
     };
-  }, [ready, refreshWatchlist]);
+  }, [ready, refreshWatchlist, watchlistId]);
+
+  async function selectList(id: string) {
+    if (id === watchlistId) return;
+    setListAction("switch");
+    try {
+      const response = await fetch("/api/watchlists", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) throw new Error("The Watchlist could not be selected.");
+      router.refresh();
+      setListAction(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The Watchlist could not be selected.");
+      setListAction(null);
+    }
+  }
+
+  async function createList() {
+    const name = window.prompt("Name your new Watchlist", "We two");
+    if (!name?.trim()) return;
+    setListAction("create");
+    try {
+      const response = await fetch("/api/watchlists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "The Watchlist could not be created.");
+      router.refresh();
+      setListAction(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The Watchlist could not be created.");
+      setListAction(null);
+    }
+  }
+
+  async function copyInvitation() {
+    setListAction("invite");
+    try {
+      const response = await fetch("/api/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ watchlistId }),
+      });
+      const data = (await response.json()) as { url?: string; error?: string };
+      if (!response.ok || !data.url) throw new Error(data.error ?? "The invitation link could not be created.");
+      await navigator.clipboard.writeText(data.url);
+      toast.success("Invitation link copied.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The invitation link could not be copied.");
+    } finally {
+      setListAction(null);
+    }
+  }
 
   async function searchMovies(value: string, activeFilters = filters) {
     const trimmedValue = value.trim();
@@ -311,10 +375,25 @@ export default function Watchlist() {
   return (
     <main className="app-shell">
       <header className="simple-header">
-        <h1 aria-label="Insieme">
-          <span aria-hidden="true">Insieme</span>
-          <FlowerMark />
-        </h1>
+        <h1><InsiemeLogo /></h1>
+        <div className="header-actions">
+          <label className="sr-only" htmlFor="watchlist-selector">Current Watchlist</label>
+          <select
+            id="watchlist-selector"
+            value={watchlistId}
+            onChange={(event) => void selectList(event.target.value)}
+            disabled={listAction !== null}
+          >
+            {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+          <button type="button" onClick={() => void createList()} disabled={listAction !== null}>New list</button>
+          <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
+            {listAction === "invite" ? "Copying…" : "Invite"}
+          </button>
+          <form action={logout} className="logout-form">
+            <button type="submit">Log out</button>
+          </form>
+        </div>
       </header>
 
       <section className="search-panel" aria-labelledby="add-film-heading">
@@ -675,14 +754,6 @@ function TrashIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
     </svg>
-  );
-}
-
-function FlowerMark() {
-  return (
-    <span className="flower-mark" aria-hidden="true">
-      <i /><i /><i /><i /><i />
-    </span>
   );
 }
 

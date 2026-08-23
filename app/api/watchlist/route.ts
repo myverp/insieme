@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getImdbRating } from "@/app/lib/imdb";
+import { createClient } from "@/app/lib/supabase/server";
+import { ensureWatchlists, selectWatchlist } from "@/app/lib/watchlist";
 
 type MovieInput = {
   id: number;
@@ -20,16 +22,16 @@ type MovieRow = {
   watched_at: string | null;
 };
 
-export async function GET() {
-  const config = getConfig();
-  if (!config) return unavailable();
+export async function GET(request: NextRequest) {
+  const auth = await authenticatedClient(request);
+  if (!auth) return unauthorized();
 
-  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?select=id,title,year,poster,overview,rating,watched_at&order=added_at.asc`, {
-    headers: databaseHeaders(config),
-    cache: "no-store",
-  });
-  const data = await response.json();
-  if (!response.ok) return databaseError(data, response.status);
+  const { data, error } = await auth.supabase
+    .from("watchlist_movies")
+    .select("id,title,year,poster,overview,rating,watched_at")
+    .eq("watchlist_id", auth.watchlistId)
+    .order("added_at", { ascending: true });
+  if (error) return databaseError(error);
 
   const rows = data as MovieRow[];
   const movies = await Promise.all(rows.filter((row) => !row.watched_at).map(async (row) => ({
@@ -47,90 +49,79 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const config = getConfig();
-  if (!config) return unavailable();
+  const auth = await authenticatedClient(request);
+  if (!auth) return unauthorized();
 
   const input = (await request.json().catch(() => null)) as MovieInput | null;
   if (!isMovie(input)) return NextResponse.json({ error: "Invalid film data." }, { status: 400 });
 
-  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?on_conflict=id`, {
-    method: "POST",
-    headers: {
-      ...databaseHeaders(config, true),
-      "Content-Type": "application/json",
-      Prefer: "resolution=ignore-duplicates,return=minimal",
-    },
-    body: JSON.stringify({
+  const { error } = await auth.supabase.from("watchlist_movies").upsert(
+    {
+      watchlist_id: auth.watchlistId,
+      added_by: auth.userId,
       id: input.id,
       title: input.title.trim(),
       year: input.year?.slice(0, 20) ?? "",
       poster: input.poster?.slice(0, 1000) ?? "",
       overview: input.overview?.slice(0, 5000) ?? "",
       rating: clampRating(input.rating),
-    }),
-    cache: "no-store",
-  });
-  if (!response.ok) return databaseError(await response.json().catch(() => null), response.status);
+    },
+    { onConflict: "watchlist_id,id", ignoreDuplicates: true },
+  );
+  if (error) return databaseError(error);
 
   return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(request: NextRequest) {
-  const config = getConfig();
-  if (!config) return unavailable();
+  const auth = await authenticatedClient(request);
+  if (!auth) return unauthorized();
 
   const id = Number(request.nextUrl.searchParams.get("id"));
   if (!Number.isSafeInteger(id) || id <= 0) return NextResponse.json({ error: "Invalid film id." }, { status: 400 });
 
-  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?id=eq.${id}&watched_at=is.null`, {
-    method: "DELETE",
-    headers: databaseHeaders(config, true),
-    cache: "no-store",
-  });
-  if (!response.ok) return databaseError(await response.json().catch(() => null), response.status);
+  const { error } = await auth.supabase
+    .from("watchlist_movies")
+    .delete()
+    .eq("watchlist_id", auth.watchlistId)
+    .eq("id", id)
+    .is("watched_at", null);
+  if (error) return databaseError(error);
 
   return NextResponse.json({ ok: true });
 }
 
 export async function PATCH(request: NextRequest) {
-  const config = getConfig();
-  if (!config) return unavailable();
+  const auth = await authenticatedClient(request);
+  if (!auth) return unauthorized();
 
   const id = Number(request.nextUrl.searchParams.get("id"));
   if (!Number.isSafeInteger(id) || id <= 0) return NextResponse.json({ error: "Invalid film id." }, { status: 400 });
 
-  const response = await fetch(`${config.url}/rest/v1/watchlist_movies?id=eq.${id}&watched_at=is.null`, {
-    method: "PATCH",
-    headers: {
-      ...databaseHeaders(config, true),
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify({ watched_at: new Date().toISOString() }),
-    cache: "no-store",
-  });
-  const data = await response.json().catch(() => null) as MovieRow[] | { message?: string } | null;
-  if (!response.ok) return databaseError(data, response.status);
+  const { data, error } = await auth.supabase
+    .from("watchlist_movies")
+    .update({ watched_at: new Date().toISOString() })
+    .eq("watchlist_id", auth.watchlistId)
+    .eq("id", id)
+    .is("watched_at", null)
+    .select("watched_at")
+    .maybeSingle();
+  if (error) return databaseError(error);
 
-  const watchedAt = Array.isArray(data) ? data[0]?.watched_at : null;
+  const watchedAt = data?.watched_at;
   if (!watchedAt) return NextResponse.json({ error: "The film is no longer on the watchlist." }, { status: 409 });
 
   return NextResponse.json({ ok: true, watchedAt });
 }
 
-function getConfig() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  const secret = process.env.INSIEME_DB_SECRET;
-  return url && key && secret ? { url, key, secret } : null;
-}
-
-function databaseHeaders(config: NonNullable<ReturnType<typeof getConfig>>, write = false) {
-  return {
-    apikey: config.key,
-    Authorization: `Bearer ${config.key}`,
-    ...(write ? { "x-insieme-secret": config.secret } : {}),
-  };
+async function authenticatedClient(request: NextRequest) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (error || !userId) return null;
+  const watchlists = await ensureWatchlists(supabase, userId);
+  const watchlist = selectWatchlist(watchlists, request.cookies.get("insieme-watchlist")?.value);
+  return { supabase, userId, watchlistId: watchlist.id };
 }
 
 function isMovie(value: MovieInput | null): value is MovieInput {
@@ -145,11 +136,11 @@ function toMovie(row: MovieRow) {
   return { id: Number(row.id), title: row.title, year: row.year, poster: row.poster, overview: row.overview, rating: Number(row.rating) };
 }
 
-function unavailable() {
-  return NextResponse.json({ error: "The shared watchlist is not configured." }, { status: 503 });
+function unauthorized() {
+  return NextResponse.json({ error: "You must be logged in." }, { status: 401 });
 }
 
-function databaseError(data: unknown, status: number) {
-  console.error("Shared watchlist database error", data);
-  return NextResponse.json({ error: "The shared watchlist is temporarily unavailable." }, { status: status >= 500 ? 502 : 500 });
+function databaseError(error: unknown) {
+  console.error("Watchlist database error", error);
+  return NextResponse.json({ error: "Your watchlist is temporarily unavailable." }, { status: 502 });
 }
