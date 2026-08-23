@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getImdbRating } from "@/app/lib/imdb";
+import { collectMovieResults, type RatedMovie } from "@/app/lib/movie-results";
 
 type TmdbMovie = {
   id: number;
@@ -12,7 +13,7 @@ type TmdbMovie = {
   genre_ids?: number[];
 };
 
-type TmdbMovieResponse = { results?: TmdbMovie[]; status_message?: string };
+type TmdbMovieResponse = { page?: number; results?: TmdbMovie[]; total_pages?: number; status_message?: string };
 type TmdbPerson = { id: number; name: string; known_for_department?: string; popularity?: number };
 type TmdbPersonResponse = { results?: TmdbPerson[]; status_message?: string };
 type TmdbCreditsResponse = { crew?: Array<TmdbMovie & { job?: string }>; status_message?: string };
@@ -25,11 +26,16 @@ export async function GET(request: NextRequest) {
   const director = params.get("director")?.trim() ?? "";
   const genre = parseNumber(params.get("genre"));
   const decade = parseNumber(params.get("decade"));
-  const minRating = parseNumber(params.get("minRating"));
+  const rawMinRating = params.get("minRating");
+  const minRating = parseNumber(rawMinRating);
   const requestedSort = params.get("sort") ?? "popularity.desc";
   const sort = allowedSorts.has(requestedSort) ? requestedSort : "popularity.desc";
   const token = process.env.TMDB_READ_TOKEN;
-  const hasFilters = Boolean(director || genre || decade || minRating);
+  const hasFilters = Boolean(director || genre || decade || minRating || sort !== "popularity.desc");
+
+  if (rawMinRating && (!Number.isFinite(Number(rawMinRating)) || minRating < 0 || minRating > 10)) {
+    return NextResponse.json({ error: "Minimum IMDb rating must be between 0 and 10." }, { status: 400 });
+  }
 
   if ((!query || query.length < 2) && !hasFilters) {
     return NextResponse.json({ error: "Enter a title or choose at least one filter." }, { status: 400 });
@@ -39,6 +45,9 @@ export async function GET(request: NextRequest) {
   }
   if (!token) {
     return NextResponse.json({ error: "Film search needs a TMDb API token." }, { status: 503 });
+  }
+  if ((minRating || sort === "imdb_rating.desc") && !process.env.OMDB_API_KEY) {
+    return NextResponse.json({ error: "IMDb filtering needs an OMDb API key." }, { status: 503 });
   }
 
   const isReadToken = token.length > 80 || token.includes(".");
@@ -55,8 +64,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let movies: TmdbMovie[];
     let resolvedDirector = "";
+    let directedIds: Set<number> | null = null;
+    let directedMovies: TmdbMovie[] = [];
 
     if (director) {
       const people = await tmdb<TmdbPersonResponse>("search/person", new URLSearchParams({ query: director, include_adult: "false", page: "1" }));
@@ -69,45 +79,63 @@ export async function GET(request: NextRequest) {
 
       resolvedDirector = person.name;
       const credits = await tmdb<TmdbCreditsResponse>(`person/${person.id}/movie_credits`, new URLSearchParams());
-      const directedMovies = (credits.crew ?? []).filter((credit) => credit.job === "Director");
-      const directedIds = new Set(directedMovies.map((movie) => movie.id));
+      directedMovies = Array.from(new Map(
+        (credits.crew ?? []).filter((credit) => credit.job === "Director").map((movie) => [movie.id, movie]),
+      ).values());
+      directedIds = new Set(directedMovies.map((movie) => movie.id));
+    }
+
+    const applyLocalFilters = (movies: TmdbMovie[]) => movies.filter((movie) => {
+      const year = Number(movie.release_date?.slice(0, 4));
+      return (!genre || movie.genre_ids?.includes(genre))
+        && (!decade || (year >= decade && year <= decade + 9));
+    });
+
+    const loadPage = async (page: number) => {
+      if (director && !query) {
+        return { movies: applyLocalFilters(directedMovies), hasMore: false };
+      }
 
       if (query) {
-        const searched = await tmdb<TmdbMovieResponse>("search/movie", new URLSearchParams({ query, include_adult: "false", page: "1" }));
-        movies = (searched.results ?? []).filter((movie) => directedIds.has(movie.id));
-      } else {
-        movies = Array.from(new Map(directedMovies.map((movie) => [movie.id, movie])).values());
+        const searched = await tmdb<TmdbMovieResponse>("search/movie", new URLSearchParams({
+          query,
+          include_adult: "false",
+          page: String(page),
+        }));
+        const movies = directedIds
+          ? (searched.results ?? []).filter((movie) => directedIds.has(movie.id))
+          : (searched.results ?? []);
+        return { movies: applyLocalFilters(movies), hasMore: page < (searched.total_pages ?? 1) };
       }
-    } else if (query) {
-      const searched = await tmdb<TmdbMovieResponse>("search/movie", new URLSearchParams({ query, include_adult: "false", page: "1" }));
-      movies = searched.results ?? [];
-    } else {
+
       const tmdbSort = sort === "imdb_rating.desc" ? "popularity.desc" : sort;
-      const discoverParams = new URLSearchParams({ include_adult: "false", include_video: "false", page: "1", sort_by: tmdbSort });
+      const discoverParams = new URLSearchParams({ include_adult: "false", include_video: "false", page: String(page), sort_by: tmdbSort });
       if (genre) discoverParams.set("with_genres", String(genre));
       if (decade) {
         discoverParams.set("primary_release_date.gte", `${decade}-01-01`);
         discoverParams.set("primary_release_date.lte", `${decade + 9}-12-31`);
       }
       const discovered = await tmdb<TmdbMovieResponse>("discover/movie", discoverParams);
-      movies = discovered.results ?? [];
-    }
+      return { movies: applyLocalFilters(discovered.results ?? []), hasMore: page < (discovered.total_pages ?? 1) };
+    };
 
-    movies = movies.filter((movie) => {
-      const year = Number(movie.release_date?.slice(0, 4));
-      return (!genre || movie.genre_ids?.includes(genre))
-        && (!decade || (year >= decade && year <= decade + 9));
+    const filteredMovies = await collectMovieResults({
+      loadPage,
+      rateMovie: (movie) => getImdbRating({
+        tmdbId: movie.id,
+        title: movie.title,
+        year: movie.release_date?.slice(0, 4),
+        required: Boolean(minRating || sort === "imdb_rating.desc"),
+      }),
+      getMovieId: (movie) => movie.id,
+      minRating,
+      compare: (first, second) => compareMovies(first, second, sort),
+      maxPages: minRating >= 8 ? 10 : 5,
+      scanAllPages: sort === "imdb_rating.desc",
     });
 
-    const ratedMovies = await Promise.all(movies.map(async (movie) => ({
-      movie,
-      rating: await getImdbRating({ tmdbId: movie.id, title: movie.title, year: movie.release_date?.slice(0, 4) }),
-    })));
-    const filteredMovies = ratedMovies.filter(({ rating }) => !minRating || rating >= minRating);
-    filteredMovies.sort((a, b) => compareMovies(a, b, sort));
-
     return NextResponse.json({
-      movies: filteredMovies.slice(0, 20).map(({ movie, rating }) => toMovie(movie, rating)),
+      movies: filteredMovies.map(({ movie, rating }) => toMovie(movie, rating)),
       message: resolvedDirector ? `Films directed by ${resolvedDirector}.` : "",
     });
   } catch (error) {
@@ -121,9 +149,7 @@ function parseNumber(value: string | null) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-type RatedMovie = { movie: TmdbMovie; rating: number };
-
-function compareMovies(a: RatedMovie, b: RatedMovie, sort: string) {
+function compareMovies(a: RatedMovie<TmdbMovie>, b: RatedMovie<TmdbMovie>, sort: string) {
   if (sort === "imdb_rating.desc") return b.rating - a.rating || (b.movie.popularity ?? 0) - (a.movie.popularity ?? 0);
   if (sort === "primary_release_date.asc") return (a.movie.release_date ?? "9999").localeCompare(b.movie.release_date ?? "9999");
   if (sort === "primary_release_date.desc") return (b.movie.release_date ?? "").localeCompare(a.movie.release_date ?? "");

@@ -1,41 +1,53 @@
-type OmdbMovie = {
-  Response?: "True" | "False";
-  imdbRating?: string;
-};
+import { unstable_cache } from "next/cache";
+import { parseImdbRating, type OmdbMovie } from "@/app/lib/imdb-rating";
 
 type ImdbLookup = {
   imdbId?: string;
   tmdbId?: number;
   title?: string;
   year?: string;
+  required?: boolean;
 };
 
-export async function getImdbRating({ imdbId, tmdbId, title, year }: ImdbLookup) {
+export async function getImdbRating({ imdbId, tmdbId, title, year, required = false }: ImdbLookup) {
   const apiKey = process.env.OMDB_API_KEY;
-  if (!apiKey || (!imdbId && !tmdbId && !title)) return 0;
+  if (!apiKey || (!imdbId && !tmdbId && !title)) {
+    if (required) throw new Error("IMDb ratings are temporarily unavailable.");
+    return 0;
+  }
 
   const resolvedImdbId = imdbId || (tmdbId ? await getImdbId(tmdbId) : "");
 
-  const params = new URLSearchParams({ apikey: apiKey, type: "movie" });
-  if (resolvedImdbId) params.set("i", resolvedImdbId);
-  else {
-    params.set("t", title!);
-    if (year) params.set("y", year);
-  }
-
   try {
-    const response = await fetch(`https://www.omdbapi.com/?${params}`, { next: { revalidate: 86400 } });
-    if (!response.ok) return 0;
-
-    const data = (await response.json()) as OmdbMovie;
-    if (data.Response !== "True" || !data.imdbRating || data.imdbRating === "N/A") return 0;
-
-    const rating = Number(data.imdbRating);
-    return Number.isFinite(rating) ? rating : 0;
-  } catch {
+    const lookup = resolvedImdbId
+      ? { imdbId: resolvedImdbId, title: "", year: "" }
+      : { imdbId: "", title: title!, year: year ?? "" };
+    const data = await getCachedOmdbMovie(apiKey, lookup.imdbId, lookup.title, lookup.year);
+    return parseImdbRating(data);
+  } catch (error) {
+    if (required) throw new Error("IMDb ratings are temporarily unavailable.", { cause: error });
     return 0;
   }
 }
+
+const getCachedOmdbMovie = unstable_cache(
+  async (apiKey: string, imdbId: string, title: string, year: string) => {
+    const params = new URLSearchParams({ apikey: apiKey, type: "movie" });
+    if (imdbId) params.set("i", imdbId);
+    else {
+      params.set("t", title);
+      if (year) params.set("y", year);
+    }
+
+    const response = await fetch(`https://www.omdbapi.com/?${params}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`OMDb request failed with status ${response.status}.`);
+    const data = (await response.json()) as OmdbMovie;
+    parseImdbRating(data);
+    return data;
+  },
+  ["omdb-movie-v2"],
+  { revalidate: 86400 },
+);
 
 async function getImdbId(tmdbId: number) {
   const token = process.env.TMDB_READ_TOKEN;

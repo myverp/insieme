@@ -219,7 +219,13 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
 
   async function searchMovies(value: string, activeFilters = filters) {
     const trimmedValue = value.trim();
-    const hasFilters = Boolean(activeFilters.genre || activeFilters.director.trim() || activeFilters.decade || activeFilters.minRating);
+    const hasFilters = Boolean(
+      activeFilters.genre
+      || activeFilters.director.trim()
+      || activeFilters.decade
+      || activeFilters.minRating
+      || activeFilters.sort !== EMPTY_FILTERS.sort
+    );
     if (!trimmedValue && !hasFilters) {
       setResults([]);
       setMessage("");
@@ -268,7 +274,13 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
     }
   }
 
-  const activeFilterCount = [filters.genre, filters.director.trim(), filters.decade, filters.minRating].filter(Boolean).length;
+  const activeFilterCount = [
+    filters.genre,
+    filters.director.trim(),
+    filters.decade,
+    filters.minRating,
+    filters.sort !== EMPTY_FILTERS.sort,
+  ].filter(Boolean).length;
 
   async function addMovie(movie: Movie) {
     const alreadyAdded = watchlist.some((item) => item.id === movie.id) || history.some((item) => item.id === movie.id);
