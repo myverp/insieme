@@ -7,6 +7,7 @@ import { logout } from "@/app/auth/actions";
 import { InsiemeLogo } from "@/app/logo";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
+import type { FormEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Movie = {
@@ -19,6 +20,15 @@ type Movie = {
 };
 
 type HistoryMovie = Movie & { watchedAt: string };
+
+type Review = {
+  id: string;
+  text: string;
+  rating: number | null;
+  own: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type MovieDetails = {
   id: number;
@@ -81,6 +91,12 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState("");
+  const [reviewText, setReviewText] = useState("");
+  const [reviewRating, setReviewRating] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
   const shouldReduceMotion = useReducedMotion();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -366,11 +382,18 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
   }
 
   async function openDetails(movie: Movie) {
+    const isWatched = history.some((item) => item.id === movie.id);
     setSelectedMovie(movie);
     setDetails(null);
     setDetailsError("");
     setDetailsLoading(true);
+    setReviews([]);
+    setReviewsError("");
+    setReviewText("");
+    setReviewRating("");
     detailsDialog.current?.showModal();
+
+    if (isWatched) void loadReviews(movie.id);
 
     try {
       const response = await fetch(`/api/movies/${movie.id}`);
@@ -381,6 +404,94 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
       setDetailsError(error instanceof Error ? error.message : "Film details are unavailable.");
     } finally {
       setDetailsLoading(false);
+    }
+  }
+
+  async function loadReviews(filmId: number) {
+    setReviewsLoading(true);
+    setReviewsError("");
+    try {
+      const response = await fetch(`/api/reviews?filmId=${filmId}`, {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as {
+        reviews?: Review[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(data.error ?? "Reviews are unavailable.");
+      }
+
+      const nextReviews = data.reviews ?? [];
+      const ownReview = nextReviews.find((review) => review.own);
+      setReviews(nextReviews);
+      setReviewText(ownReview?.text ?? "");
+      setReviewRating(ownReview?.rating?.toString() ?? "");
+    } catch (error) {
+      setReviewsError(
+        error instanceof Error ? error.message : "Reviews are unavailable.",
+      );
+    } finally {
+      setReviewsLoading(false);
+    }
+  }
+
+  async function saveReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedMovie || !reviewText.trim()) return;
+
+    const ownReview = reviews.find((review) => review.own);
+    setReviewSaving(true);
+    setReviewsError("");
+    try {
+      const response = await fetch(`/api/reviews?filmId=${selectedMovie.id}`, {
+        method: ownReview ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: reviewText,
+          rating: reviewRating ? Number(reviewRating) : null,
+        }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error ?? "The review could not be saved.");
+      }
+      await loadReviews(selectedMovie.id);
+      toast.success(ownReview ? "Review updated." : "Review added.");
+    } catch (error) {
+      setReviewsError(
+        error instanceof Error
+          ? error.message
+          : "The review could not be saved.",
+      );
+    } finally {
+      setReviewSaving(false);
+    }
+  }
+
+  async function deleteReview() {
+    if (!selectedMovie) return;
+    if (!window.confirm("Delete your review?")) return;
+    setReviewSaving(true);
+    setReviewsError("");
+    try {
+      const response = await fetch(`/api/reviews?filmId=${selectedMovie.id}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error ?? "The review could not be deleted.");
+      }
+      await loadReviews(selectedMovie.id);
+      toast.success("Review deleted.");
+    } catch (error) {
+      setReviewsError(
+        error instanceof Error
+          ? error.message
+          : "The review could not be deleted.",
+      );
+    } finally {
+      setReviewSaving(false);
     }
   }
 
@@ -712,6 +823,79 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
                   <p className="trailer-unavailable">No trailer is available for this film.</p>
                 )}
               </>
+            ) : null}
+
+            {history.some((movie) => movie.id === selectedMovie.id) ? (
+              <section className="details-section reviews-section" aria-labelledby="reviews-title">
+                <h3 id="reviews-title">Reviews</h3>
+
+                {reviewsLoading ? (
+                  <p className="reviews-state" role="status">Loading reviews…</p>
+                ) : null}
+                {reviewsError ? (
+                  <p className="reviews-state reviews-error" role="alert">{reviewsError}</p>
+                ) : null}
+
+                <div className="reviews-list">
+                  {reviews.filter((review) => !review.own).map((review) => (
+                    <article className="review-card" key={review.id}>
+                      <div className="review-card-heading">
+                        <strong>Watchlist member</strong>
+                        {review.rating ? <span>{review.rating} / 10</span> : null}
+                      </div>
+                      <p>{review.text}</p>
+                    </article>
+                  ))}
+                  {!reviewsLoading && !reviews.some((review) => !review.own) ? (
+                    <p className="reviews-empty">No reviews from other members yet.</p>
+                  ) : null}
+                </div>
+
+                <form className="review-form" onSubmit={saveReview}>
+                  <label htmlFor="review-text">Your review</label>
+                  <textarea
+                    id="review-text"
+                    value={reviewText}
+                    onChange={(event) => setReviewText(event.target.value)}
+                    maxLength={5000}
+                    required
+                    disabled={reviewSaving || reviewsLoading}
+                    placeholder="What did you think?"
+                  />
+
+                  <label htmlFor="review-rating">Rating <span>(optional)</span></label>
+                  <select
+                    id="review-rating"
+                    value={reviewRating}
+                    onChange={(event) => setReviewRating(event.target.value)}
+                    disabled={reviewSaving || reviewsLoading}
+                  >
+                    <option value="">No rating</option>
+                    {Array.from({ length: 10 }, (_, index) => index + 1).map((rating) => (
+                      <option key={rating} value={rating}>{rating} / 10</option>
+                    ))}
+                  </select>
+
+                  <div className="review-actions">
+                    <button
+                      type="submit"
+                      disabled={reviewSaving || reviewsLoading || !reviewText.trim()}
+                    >
+                      {reviewSaving ? "Saving…" : reviews.some((review) => review.own) ? "Update review" : "Add review"}
+                    </button>
+                    {reviews.some((review) => review.own) ? (
+                      <button
+                        className="review-delete"
+                        type="button"
+                        onClick={() => void deleteReview()}
+                        disabled={reviewSaving || reviewsLoading}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </form>
+              </section>
             ) : null}
           </div>
         ) : null}

@@ -20,6 +20,10 @@ A private link that allows another person to become a Member of a Watchlist. _Av
 
 The separate record of films from the watchlist that have been marked as watched, including when they were watched. _Avoid:_ completed list.
 
+## Review
+
+A Member’s written reaction to a watched Film in a specific Watchlist, optionally accompanied by a score. Each Member can have one Review per Film in that Watchlist. _Avoid:_ comment, note, or watched status.
+
 ## Film
 
 A movie that can be discovered, inspected, and added to the watchlist. Use “film” in product language; use “movie” only when an external service or code interface already uses that term.

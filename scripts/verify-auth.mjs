@@ -27,7 +27,7 @@ assert.notEqual((await fetch(`${appUrl}/api/movies?query=matrix`)).status, 401, 
 
 const firstUser = await createAndLogin(first, `first-${runId}@example.test`, password);
 await createAndLogin(second, `second-${runId}@example.test`, password);
-await createAndLogin(outsider, `outsider-${runId}@example.test`, password);
+const outsiderUser = await createAndLogin(outsider, `outsider-${runId}@example.test`, password);
 
 assert.deepEqual(await appRequest(first, "/api/watchlist"), { movies: [], history: [] });
 assert.deepEqual(await appRequest(second, "/api/watchlist"), { movies: [], history: [] });
@@ -131,6 +131,104 @@ await appRequest(second, `/api/watchlist?id=${movieId + 1}`, { method: "PATCH", 
 firstList = await appRequest(first, "/api/watchlist", { watchlistId: sharedList.id });
 assert.deepEqual(firstList.history.map((movie) => movie.title), ["Our shared film"]);
 
+await appError(first, `/api/reviews?filmId=${movieId + 1}`, 400, {
+  method: "POST",
+  watchlistId: sharedList.id,
+  body: JSON.stringify({ text: "", rating: 9 }),
+});
+await appError(first, `/api/reviews?filmId=${movieId + 2}`, 409, {
+  method: "POST",
+  watchlistId: sharedList.id,
+  body: JSON.stringify({ text: "Not watched yet", rating: null }),
+});
+
+const firstReview = await appRequest(first, `/api/reviews?filmId=${movieId + 1}`, {
+  method: "POST",
+  watchlistId: sharedList.id,
+  body: JSON.stringify({ text: "A lovely shared watch.", rating: 9 }),
+});
+assert.equal(firstReview.review.own, true);
+assert.equal(firstReview.review.rating, 9);
+
+await appError(first, `/api/reviews?filmId=${movieId + 1}`, 409, {
+  method: "POST",
+  watchlistId: sharedList.id,
+  body: JSON.stringify({ text: "Duplicate", rating: null }),
+});
+
+let sharedReviews = await appRequest(second, `/api/reviews?filmId=${movieId + 1}`, {
+  watchlistId: sharedList.id,
+});
+assert.equal(sharedReviews.reviews.length, 1);
+assert.equal(sharedReviews.reviews[0].own, false);
+assert.equal(sharedReviews.reviews[0].text, "A lovely shared watch.");
+
+await appRequest(second, `/api/reviews?filmId=${movieId + 1}`, {
+  method: "POST",
+  watchlistId: sharedList.id,
+  body: JSON.stringify({ text: "I liked it too.", rating: null }),
+});
+sharedReviews = await appRequest(first, `/api/reviews?filmId=${movieId + 1}`, {
+  watchlistId: sharedList.id,
+});
+assert.equal(sharedReviews.reviews.length, 2);
+assert.equal(sharedReviews.reviews.filter((review) => review.own).length, 1);
+
+const { data: outsiderReviewRows, error: outsiderReviewRowsError } = await outsider.supabase
+  .from("film_reviews")
+  .select("id,watchlist_id,film_id,user_id")
+  .eq("watchlist_id", sharedList.id);
+assert.ifError(outsiderReviewRowsError);
+assert.deepEqual(outsiderReviewRows, []);
+
+const { error: forgedReviewError } = await outsider.supabase.from("film_reviews").insert({
+  watchlist_id: sharedList.id,
+  film_id: movieId + 1,
+  user_id: outsiderUser.id,
+  body: "I am not a member.",
+  rating: 1,
+});
+assert(forgedReviewError, "RLS must reject reviews from non-members");
+
+const { data: changedReviewRows, error: changedReviewRowsError } = await second.supabase
+  .from("film_reviews")
+  .update({ body: "Changed by another member" })
+  .eq("id", firstReview.review.id)
+  .select();
+assert.ifError(changedReviewRowsError);
+assert.deepEqual(changedReviewRows, []);
+
+const { data: deletedReviewRows, error: deletedReviewRowsError } = await second.supabase
+  .from("film_reviews")
+  .delete()
+  .eq("id", firstReview.review.id)
+  .select();
+assert.ifError(deletedReviewRowsError);
+assert.deepEqual(deletedReviewRows, []);
+
+await appRequest(first, `/api/reviews?filmId=${movieId + 1}`, {
+  method: "PATCH",
+  watchlistId: sharedList.id,
+  body: JSON.stringify({ text: "Still lovely on reflection.", rating: 10 }),
+});
+sharedReviews = await appRequest(second, `/api/reviews?filmId=${movieId + 1}`, {
+  watchlistId: sharedList.id,
+});
+assert.equal(sharedReviews.reviews.find((review) => review.id === firstReview.review.id).text, "Still lovely on reflection.");
+
+await appRequest(second, `/api/reviews?filmId=${movieId + 1}`, {
+  method: "DELETE",
+  watchlistId: sharedList.id,
+});
+await appRequest(first, `/api/reviews?filmId=${movieId + 1}`, {
+  method: "DELETE",
+  watchlistId: sharedList.id,
+});
+sharedReviews = await appRequest(first, `/api/reviews?filmId=${movieId + 1}`, {
+  watchlistId: sharedList.id,
+});
+assert.deepEqual(sharedReviews.reviews, []);
+
 await first.supabase.auth.signOut();
 const loggedOutResponse = await fetch(`${appUrl}/api/watchlist`, { headers: { Cookie: first.cookieHeader() } });
 assert.equal(loggedOutResponse.status, 401);
@@ -140,7 +238,7 @@ assert.ifError(loginError);
 firstList = await appRequest(first, "/api/watchlist", { watchlistId: sharedList.id });
 assert.deepEqual(firstList.history.map((movie) => movie.title), ["Our shared film"]);
 
-console.log("Auth integration passed: multiple Watchlists, invitations, shared history, session persistence, logout, and outsider RLS isolation.");
+console.log("Auth integration passed: multiple Watchlists, invitations, shared history, member reviews, session persistence, logout, and outsider RLS isolation.");
 
 function authClient() {
   const jar = new Map();
@@ -167,6 +265,18 @@ async function createAndLogin(client, email, userPassword) {
 }
 
 async function appRequest(client, path, init = {}) {
+  const { response, data } = await appResponse(client, path, init);
+  assert.equal(response.ok, true, `${path} failed (${response.status}): ${JSON.stringify(data)}`);
+  return data;
+}
+
+async function appError(client, path, status, init = {}) {
+  const { response, data } = await appResponse(client, path, init);
+  assert.equal(response.status, status, `${path} returned ${response.status}: ${JSON.stringify(data)}`);
+  return data;
+}
+
+async function appResponse(client, path, init = {}) {
   const { watchlistId, ...requestInit } = init;
   const cookies = [client.cookieHeader(), watchlistId ? `insieme-watchlist=${watchlistId}` : ""].filter(Boolean).join("; ");
   const response = await fetch(`${appUrl}${path}`, {
@@ -174,8 +284,7 @@ async function appRequest(client, path, init = {}) {
     headers: { "Content-Type": "application/json", Cookie: cookies, ...requestInit.headers },
   });
   const data = await response.json();
-  assert.equal(response.ok, true, `${path} failed (${response.status}): ${JSON.stringify(data)}`);
-  return data;
+  return { response, data };
 }
 
 function loadLocalEnv() {

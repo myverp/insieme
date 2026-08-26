@@ -1,6 +1,6 @@
 # Authentication setup
 
-Insieme uses Supabase Auth with email and password. Browser sessions are stored in cookies by `@supabase/ssr`. Every Watchlist has Members, a user can belong to several Watchlists, and RLS authorizes film and watched-history access through membership.
+Insieme uses Supabase Auth with email and password. Browser sessions are stored in cookies by `@supabase/ssr`. Every Watchlist has Members, a user can belong to several Watchlists, and RLS authorizes film, watched-history, and review access through membership. Members can read all reviews in a shared Watchlist, while only a review's author can edit or delete it.
 
 ## Environment
 
@@ -16,7 +16,7 @@ Add `${NEXT_PUBLIC_SITE_URL}/auth/confirm` to **Authentication → URL Configura
 {{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email
 ```
 
-Apply both migrations in `supabase/migrations` before enabling the new application code. Existing rows from the former shared-secret list have no safe owner to infer, so they remain preserved but inaccessible. Authenticated users receive a first Watchlist, can create more, switch between them, and invite other users with a private link. Every film operation is scoped to a Watchlist membership.
+Apply all migrations in `supabase/migrations` before enabling the new application code. Existing rows from the former shared-secret list have no safe owner to infer, so they remain preserved but inaccessible. Authenticated users receive a first Watchlist, can create more, switch between them, and invite other users with a private link. Every film and review operation is scoped to a Watchlist membership.
 
 ## Local verification
 
@@ -28,4 +28,4 @@ pnpm dev
 pnpm test:auth
 ```
 
-The integration check creates disposable local accounts and verifies redirects, signup, login, cookie persistence, multiple Watchlists, invitation acceptance, shared film/history operations, logout, and outsider RLS isolation.
+The integration check creates disposable local accounts and verifies redirects, signup, login, cookie persistence, multiple Watchlists, invitation acceptance, shared film/history operations, per-member review creation, editing, deletion, logout, and outsider RLS isolation.
