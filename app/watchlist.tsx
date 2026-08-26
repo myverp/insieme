@@ -741,7 +741,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                     <span className="film-info">
                       <span className="film-title" title={movie.title}>{movie.title}</span>
                       <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
-                      {movie.overview ? <span className="overview">{movie.overview}</span> : null}
                     </span>
                   </button>
                 </motion.li>
