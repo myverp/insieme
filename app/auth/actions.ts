@@ -13,6 +13,11 @@ function credentials(formData: FormData) {
   return { email: email.trim(), password };
 }
 
+function displayName(formData: FormData) {
+  const value = formData.get("displayName");
+  return typeof value === "string" && value.trim().length > 0 && value.trim().length <= 80 ? value.trim() : null;
+}
+
 export async function login(formData: FormData) {
   const input = credentials(formData);
   const next = safeNext(formData.get("next"));
@@ -26,8 +31,10 @@ export async function login(formData: FormData) {
 
 export async function signup(formData: FormData) {
   const input = credentials(formData);
+  const name = displayName(formData);
   const next = safeNext(formData.get("next"));
   if (!input) redirect("/signup?error=Enter+a+valid+email+and+a+password+of+at+least+8+characters.");
+  if (!name) redirect("/signup?error=Enter+a+display+name+between+1+and+80+characters.");
 
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
@@ -37,7 +44,7 @@ export async function signup(formData: FormData) {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     ...input,
-    options: { emailRedirectTo: `${siteUrl}/auth/confirm?next=${encodeURIComponent(confirmationNext)}` },
+    options: { emailRedirectTo: `${siteUrl}/auth/confirm?next=${encodeURIComponent(confirmationNext)}`, data: { display_name: name } },
   });
 
   if (error) redirect(`/signup?error=${encodeURIComponent(error.message)}`);

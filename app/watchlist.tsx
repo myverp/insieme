@@ -1,10 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
 import { logout } from "@/app/auth/actions";
 import { InsiemeLogo } from "@/app/logo";
+import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import type { FormEvent } from "react";
@@ -28,6 +30,7 @@ type Review = {
   own: boolean;
   createdAt: string;
   updatedAt: string;
+  profile: Profile | null;
 };
 
 type MovieDetails = {
@@ -76,7 +79,7 @@ const EMPTY_FILTERS: SearchFilters = { genre: "", director: "", decade: "", minR
 
 type WatchlistSummary = { id: string; name: string };
 
-export default function Watchlist({ watchlists, watchlistId, joined }: { watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean }) {
+export default function Watchlist({ watchlists, watchlistId, joined, profile }: { watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean; profile: Profile }) {
   const router = useRouter();
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [history, setHistory] = useState<HistoryMovie[]>([]);
@@ -97,6 +100,7 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
   const [reviewText, setReviewText] = useState("");
   const [reviewRating, setReviewRating] = useState("");
   const [reviewSaving, setReviewSaving] = useState(false);
+  const [members, setMembers] = useState<Profile[]>([profile]);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
   const shouldReduceMotion = useReducedMotion();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,6 +116,17 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
   useEffect(() => {
     if (joined) toast.success("You joined the Watchlist.");
   }, [joined]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/profiles", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { profiles?: Profile[] };
+        if (response.ok && !cancelled) setMembers(data.profiles ?? [profile]);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [profile, watchlistId]);
 
   const refreshWatchlist = useCallback(async () => {
     const response = await fetch(`/api/watchlist?selected=${encodeURIComponent(watchlistId)}`, { cache: "no-store" });
@@ -513,9 +528,13 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
           <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
             {listAction === "invite" ? "Copying…" : "Invite"}
           </button>
+          <Link href="/profile" className="current-profile"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
           <form action={logout} className="logout-form">
             <button type="submit">Log out</button>
           </form>
+        </div>
+        <div className="member-list" aria-label="Watchlist members">
+          {members.map((member) => <span className="member-chip" key={member.userId}><ProfileAvatar displayName={member.displayName} small /><span>{member.displayName}</span></span>)}
         </div>
       </header>
 
@@ -840,7 +859,7 @@ export default function Watchlist({ watchlists, watchlistId, joined }: { watchli
                   {reviews.filter((review) => !review.own).map((review) => (
                     <article className="review-card" key={review.id}>
                       <div className="review-card-heading">
-                        <strong>Watchlist member</strong>
+                        {review.profile ? <span className="review-author"><ProfileAvatar displayName={review.profile.displayName} small /><strong>{review.profile.displayName}</strong></span> : <strong>Watchlist member</strong>}
                         {review.rating ? <span>{review.rating} / 10</span> : null}
                       </div>
                       <p>{review.text}</p>

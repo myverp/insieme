@@ -8,10 +8,11 @@ type AuthFormProps = {
   error?: string;
   message?: string;
   next?: string;
+  showDisplayName?: boolean;
   children: ReactNode;
 };
 
-export function AuthForm({ title, action, submitLabel, error, message, next, children }: AuthFormProps) {
+export function AuthForm({ title, action, submitLabel, error, message, next, showDisplayName = false, children }: AuthFormProps) {
   return (
     <main className="auth-shell">
       <section className="auth-card">
@@ -21,6 +22,7 @@ export function AuthForm({ title, action, submitLabel, error, message, next, chi
         {message ? <p className="auth-message" role="status">{message}</p> : null}
         <form action={action}>
           {next ? <input type="hidden" name="next" value={next} /> : null}
+          {showDisplayName ? <><label htmlFor="display-name">Display name</label><input id="display-name" name="displayName" type="text" autoComplete="name" maxLength={80} required /></> : null}
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" autoComplete="email" required />
           <label htmlFor="password">Password</label>

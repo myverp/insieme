@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/app/lib/supabase/server";
 import { ensureWatchlists, selectWatchlist } from "@/app/lib/watchlist";
+import { toProfile } from "@/app/profile/data";
+import type { Profile } from "@/app/profile/avatar";
 
 type ReviewInput = { text?: unknown; rating?: unknown };
 
@@ -28,10 +30,12 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: true });
   if (error) return databaseError(error);
 
+  const profiles = await reviewProfiles(auth.supabase, data as ReviewRow[]);
+  if (profiles.error) return databaseError(profiles.error);
   return NextResponse.json(
     {
       reviews: (data as ReviewRow[]).map((review) =>
-        toReview(review, auth.userId),
+        toReview(review, auth.userId, profiles.value),
       ),
     },
     { headers: { "Cache-Control": "no-store" } },
@@ -71,7 +75,7 @@ export async function POST(request: NextRequest) {
   if (error) return databaseError(error);
 
   return NextResponse.json(
-    { review: toReview(data as ReviewRow, auth.userId) },
+    { review: toReview(data as ReviewRow, auth.userId, new Map()) },
     { status: 201 },
   );
 }
@@ -109,7 +113,7 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ review: toReview(data as ReviewRow, auth.userId) });
+  return NextResponse.json({ review: toReview(data as ReviewRow, auth.userId, new Map()) });
 }
 
 export async function DELETE(request: NextRequest) {
@@ -193,7 +197,14 @@ function reviewInput(
   };
 }
 
-function toReview(review: ReviewRow, userId: string) {
+async function reviewProfiles(supabase: Awaited<ReturnType<typeof createClient>>, reviews: ReviewRow[]) {
+  const userIds = [...new Set(reviews.map((review) => review.user_id))];
+  if (!userIds.length) return { value: new Map<string, Profile>(), error: null };
+  const { data, error } = await supabase.from("profiles").select("user_id,display_name").in("user_id", userIds);
+  return { value: new Map((data ?? []).map((row) => [row.user_id, toProfile(row)])), error };
+}
+
+function toReview(review: ReviewRow, userId: string, profiles: Map<string, Profile>) {
   return {
     id: review.id,
     text: review.body,
@@ -201,6 +212,7 @@ function toReview(review: ReviewRow, userId: string) {
     own: review.user_id === userId,
     createdAt: review.created_at,
     updatedAt: review.updated_at,
+    profile: profiles.get(review.user_id) ?? null,
   };
 }
 

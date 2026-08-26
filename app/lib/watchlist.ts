@@ -27,10 +27,10 @@ export async function ensureWatchlists(supabase: SupabaseClient, userId: string)
   const existing = await listWatchlists(supabase, userId);
   if (existing.length) return existing;
 
-  const { error } = await supabase.rpc("create_watchlist", { list_name: "My Watchlist" });
-  if (error) throw error;
+  const { data: watchlistId, error } = await supabase.rpc("create_watchlist", { list_name: "My Watchlist" });
+  if (error || !watchlistId) throw error ?? new Error("The Watchlist could not be created.");
 
-  return listWatchlists(supabase, userId);
+  return [{ id: watchlistId, name: "My Watchlist" }];
 }
 
 export function selectWatchlist(watchlists: Watchlist[], preferredId?: string): Watchlist {

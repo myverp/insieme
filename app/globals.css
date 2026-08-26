@@ -32,9 +32,16 @@ button:disabled { cursor: default; opacity: .55; }
 .simple-header h1 { position: relative; z-index: 1; display: inline-flex; align-items: flex-start; margin: 0; color: var(--text); font-family: var(--font-site); font-size: clamp(34px, 5vw, 48px); font-weight: 650; letter-spacing: -.035em; }
 .insieme-logo { display: inline-flex; align-items: flex-start; color: inherit; line-height: 1; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
-.header-actions select, .header-actions > button, .logout-form button { min-height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); font-weight: 700; }
+.header-actions select, .header-actions > button, .logout-form button, .current-profile { min-height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); font-weight: 700; }
 .header-actions select { max-width: 190px; color: var(--text); }
 .header-actions > button:hover, .logout-form button:hover { border-color: #b8b2a6; color: var(--text); }
+.current-profile { display: inline-flex; align-items: center; gap: 7px; text-decoration: none; }
+.current-profile:hover { border-color: #b8b2a6; color: var(--text); }
+.profile-avatar { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: #dfeadf; color: var(--accent-dark); font-size: 14px; font-weight: 850; letter-spacing: .04em; }
+.profile-avatar-small { width: 26px; height: 26px; font-size: 10px; }
+.member-list { position: absolute; right: 0; bottom: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; transform: translateY(100%); padding-top: 4px; }
+.member-chip, .review-author { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.member-chip { padding: 4px 8px 4px 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
 .header-actions > button:nth-of-type(2) { border-color: var(--accent); background: var(--accent); color: #fff; }
 .header-actions > button:nth-of-type(2):hover { background: var(--accent-dark); }
 .logout-form { margin: 0; }
@@ -180,6 +187,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .review-card { padding: 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--background); }
 .review-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 7px; font-size: 13px; }
 .review-card-heading span { color: var(--accent-dark); font-weight: 800; }
+.review-card-heading .review-author { color: var(--text); font-size: 13px; }
 .review-card p { overflow-wrap: anywhere; white-space: pre-wrap; }
 .reviews-section .reviews-empty { color: var(--muted); font-size: 13px; }
 .reviews-state { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
@@ -194,6 +202,16 @@ ul { margin: 0; padding: 0; list-style: none; }
 .review-actions button { min-height: 40px; padding: 0 15px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font-weight: 750; }
 .review-actions .review-delete { border-color: #d7aaa2; background: transparent; color: var(--danger); }
 .review-actions button:disabled { cursor: not-allowed; opacity: .6; }
+.profile-page { width: min(560px, calc(100% - 32px)); margin: 64px auto; }
+.back-link { color: var(--accent-dark); font-weight: 700; text-underline-offset: 4px; }
+.profile-card { display: grid; grid-template-columns: auto 1fr; gap: 14px; margin-top: 20px; padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.profile-kicker { margin: 0 0 4px; color: var(--muted); font-size: 13px; font-weight: 700; }
+.profile-card h1 { margin: 0; }
+.profile-form { display: grid; gap: 8px; grid-column: 1 / -1; margin-top: 12px; }
+.profile-form label { font-weight: 700; }
+.profile-form input { min-height: 42px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; background: #fff; color: var(--text); font: inherit; }
+.profile-form button { width: fit-content; min-height: 40px; padding: 0 15px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font-weight: 750; }
+.profile-error { margin: 0; color: var(--danger); }
 
 @media (max-width: 620px) {
   .review-form { grid-template-columns: 1fr; }

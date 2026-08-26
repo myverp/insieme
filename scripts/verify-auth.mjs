@@ -25,9 +25,21 @@ assert.equal((await fetch(`${appUrl}/login`)).status, 200);
 assert.equal((await fetch(`${appUrl}/signup`)).status, 200);
 assert.notEqual((await fetch(`${appUrl}/api/movies?query=matrix`)).status, 401, "Public film search must not require login");
 
-const firstUser = await createAndLogin(first, `first-${runId}@example.test`, password);
-await createAndLogin(second, `second-${runId}@example.test`, password);
+const firstUser = await createAndLogin(first, `first-${runId}@example.test`, password, "First Member");
+await createAndLogin(second, `second-${runId}@example.test`, password, "Second Member");
 const outsiderUser = await createAndLogin(outsider, `outsider-${runId}@example.test`, password);
+
+const { data: firstProfile, error: firstProfileError } = await first.supabase
+  .from("profiles").select("user_id,display_name,created_at,updated_at").eq("user_id", firstUser.id).single();
+assert.ifError(firstProfileError);
+assert.equal(firstProfile.display_name, "First Member");
+assert(firstProfile.created_at && firstProfile.updated_at, "A created profile must have timestamps");
+
+const { data: updatedFirstProfile, error: updateFirstProfileError } = await first.supabase
+  .from("profiles").update({ display_name: "First Updated" }).eq("user_id", firstUser.id).select("display_name").single();
+assert.ifError(updateFirstProfileError);
+assert.equal(updatedFirstProfile.display_name, "First Updated");
+
 
 assert.deepEqual(await appRequest(first, "/api/watchlist"), { movies: [], history: [] });
 assert.deepEqual(await appRequest(second, "/api/watchlist"), { movies: [], history: [] });
@@ -71,6 +83,21 @@ assert(token);
 const { data: joinedListId, error: joinError } = await second.supabase.rpc("accept_watchlist_invite", { invite_token: token });
 assert.ifError(joinError);
 assert.equal(joinedListId, sharedList.id);
+
+const { data: sharedProfile, error: sharedProfileError } = await second.supabase
+  .from("profiles").select("user_id,display_name").eq("user_id", firstUser.id).single();
+assert.ifError(sharedProfileError);
+assert.equal(sharedProfile.display_name, "First Updated");
+
+const { data: changedProfileRows, error: changedProfileRowsError } = await second.supabase
+  .from("profiles").update({ display_name: "Changed by another member" }).eq("user_id", firstUser.id).select();
+assert.ifError(changedProfileRowsError);
+assert.deepEqual(changedProfileRows, []);
+
+const { data: outsiderProfile, error: outsiderProfileError } = await outsider.supabase
+  .from("profiles").select("user_id,display_name").eq("user_id", firstUser.id);
+assert.ifError(outsiderProfileError);
+assert.deepEqual(outsiderProfile, []);
 
 let secondList = await appRequest(second, "/api/watchlist", { watchlistId: sharedList.id });
 assert.deepEqual(secondList.movies.map((movie) => movie.title), ["Our shared film"]);
@@ -162,6 +189,7 @@ let sharedReviews = await appRequest(second, `/api/reviews?filmId=${movieId + 1}
 assert.equal(sharedReviews.reviews.length, 1);
 assert.equal(sharedReviews.reviews[0].own, false);
 assert.equal(sharedReviews.reviews[0].text, "A lovely shared watch.");
+assert.equal(sharedReviews.reviews[0].profile.displayName, "First Updated");
 
 await appRequest(second, `/api/reviews?filmId=${movieId + 1}`, {
   method: "POST",
@@ -238,7 +266,7 @@ assert.ifError(loginError);
 firstList = await appRequest(first, "/api/watchlist", { watchlistId: sharedList.id });
 assert.deepEqual(firstList.history.map((movie) => movie.title), ["Our shared film"]);
 
-console.log("Auth integration passed: multiple Watchlists, invitations, shared history, member reviews, session persistence, logout, and outsider RLS isolation.");
+console.log("Auth integration passed: profiles, multiple Watchlists, invitations, shared history, member reviews, session persistence, logout, and outsider RLS isolation.");
 
 function authClient() {
   const jar = new Map();
@@ -254,8 +282,8 @@ function authClient() {
   };
 }
 
-async function createAndLogin(client, email, userPassword) {
-  const { data, error } = await client.supabase.auth.signUp({ email, password: userPassword });
+async function createAndLogin(client, email, userPassword, displayName) {
+  const { data, error } = await client.supabase.auth.signUp({ email, password: userPassword, options: displayName ? { data: { display_name: displayName } } : undefined });
   assert.ifError(error);
   assert(data.user);
   await client.supabase.auth.signOut();

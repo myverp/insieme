@@ -1,6 +1,6 @@
 # Authentication setup
 
-Insieme uses Supabase Auth with email and password. Browser sessions are stored in cookies by `@supabase/ssr`. Every Watchlist has Members, a user can belong to several Watchlists, and RLS authorizes film, watched-history, and review access through membership. Members can read all reviews in a shared Watchlist, while only a review's author can edit or delete it.
+Insieme uses Supabase Auth with email and password. Browser sessions are stored in cookies by `@supabase/ssr`. Every user has a profile with a required display name, initials avatar, and timestamps. Profiles are created by an Auth trigger, backfilled by the migration, and safely ensured when a signed-in user first opens the app. Every Watchlist has Members, a user can belong to several Watchlists, and RLS authorizes film, watched-history, reviews, and profile visibility through membership. Members can read profiles only for people with whom they share a Watchlist; users can update only their own display name.
 
 ## Environment
 
@@ -28,4 +28,4 @@ pnpm dev
 pnpm test:auth
 ```
 
-The integration check creates disposable local accounts and verifies redirects, signup, login, cookie persistence, multiple Watchlists, invitation acceptance, shared film/history operations, per-member review creation, editing, deletion, logout, and outsider RLS isolation.
+The integration check creates disposable local accounts and verifies redirects, signup, profile creation and editing, cookie persistence, multiple Watchlists, invitation acceptance, shared film/history operations, member names beside reviews, editing restrictions, logout, and outsider RLS isolation.
