@@ -10,7 +10,7 @@ import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import type { FormEvent } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 type Movie = {
   id: number;
@@ -98,7 +98,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState("");
   const [reviewText, setReviewText] = useState("");
-  const [reviewRating, setReviewRating] = useState("");
+  const [reviewRating, setReviewRating] = useState<number | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const [members, setMembers] = useState<Profile[]>([profile]);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
@@ -405,7 +405,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     setReviews([]);
     setReviewsError("");
     setReviewText("");
-    setReviewRating("");
+    setReviewRating(null);
     detailsDialog.current?.showModal();
 
     if (isWatched) void loadReviews(movie.id);
@@ -441,7 +441,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       const ownReview = nextReviews.find((review) => review.own);
       setReviews(nextReviews);
       setReviewText(ownReview?.text ?? "");
-      setReviewRating(ownReview?.rating?.toString() ?? "");
+      setReviewRating(ownReview?.rating ?? null);
     } catch (error) {
       setReviewsError(
         error instanceof Error ? error.message : "Reviews are unavailable.",
@@ -464,7 +464,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: reviewText,
-          rating: reviewRating ? Number(reviewRating) : null,
+          rating: reviewRating,
         }),
       });
       const data = (await response.json()) as { error?: string };
@@ -859,7 +859,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                     <article className="review-card" key={review.id}>
                       <div className="review-card-heading">
                         {review.profile ? <span className="review-author"><ProfileAvatar displayName={review.profile.displayName} small /><strong>{review.profile.displayName}</strong></span> : <strong>Watchlist member</strong>}
-                        {review.rating ? <span>{review.rating} / 10</span> : null}
+                        {review.rating ? <RatingStars rating={review.rating} label={formatReviewRating(review.rating)} /> : null}
                       </div>
                       <p>{review.text}</p>
                     </article>
@@ -881,18 +881,14 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                     placeholder="What did you think?"
                   />
 
-                  <label htmlFor="review-rating">Rating <span>(optional)</span></label>
-                  <select
-                    id="review-rating"
-                    value={reviewRating}
-                    onChange={(event) => setReviewRating(event.target.value)}
-                    disabled={reviewSaving || reviewsLoading}
-                  >
-                    <option value="">No rating</option>
-                    {Array.from({ length: 10 }, (_, index) => index + 1).map((rating) => (
-                      <option key={rating} value={rating}>{rating} / 10</option>
-                    ))}
-                  </select>
+                  <div className="review-rating-field">
+                    <span className="review-rating-label">Rating <span>(optional)</span></span>
+                    <StarRating
+                      value={reviewRating}
+                      onChange={setReviewRating}
+                      disabled={reviewSaving || reviewsLoading}
+                    />
+                  </div>
 
                   <div className="review-actions">
                     <button
@@ -920,6 +916,71 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       </dialog>
     </main>
   );
+}
+
+function StarRating({ value, onChange, disabled }: { value: number | null; onChange: (rating: number | null) => void; disabled: boolean }) {
+  const label = value ? `${formatReviewRating(value)} selected` : "No rating selected";
+
+  return (
+    <div className="star-rating" role="group" aria-label={`Film rating: ${label}`}>
+      <RatingStars rating={value} />
+      <div className="star-rating-options">
+        {Array.from({ length: 10 }, (_, index) => {
+          const rating = index + 1;
+          return (
+            <button
+              key={rating}
+              type="button"
+              className="star-rating-option"
+              aria-label={`Rate ${formatReviewRating(rating)}`}
+              aria-pressed={value === rating}
+              disabled={disabled}
+              onClick={() => onChange(rating)}
+            />
+          );
+        })}
+      </div>
+      {value ? (
+        <button type="button" className="clear-rating" onClick={() => onChange(null)} disabled={disabled}>
+          Clear
+        </button>
+      ) : null}
+      <output className="star-rating-value" aria-live="polite">{value ? formatReviewRating(value) : "No rating"}</output>
+    </div>
+  );
+}
+
+function RatingStars({ rating, label }: { rating: number | null; label?: string }) {
+  return (
+    <span className="rating-stars" aria-label={label} aria-hidden={label ? undefined : true}>
+      {Array.from({ length: 5 }, (_, index) => {
+        const step = index + 1;
+        const fill = !rating ? "empty" : rating >= step * 2 ? "full" : rating === step * 2 - 1 ? "half" : "empty";
+        return <StarIcon className={`rating-star rating-star-${fill}`} key={step} />;
+      })}
+    </span>
+  );
+}
+
+function StarIcon({ className }: { className: string }) {
+  const halfStarId = useId();
+  const isHalf = className.includes("rating-star-half");
+
+  return (
+    <svg className={className} viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <defs>
+        <linearGradient id={halfStarId} x1="0" x2="1">
+          <stop offset="50%" stopColor="#e6aa2f" />
+          <stop offset="50%" stopColor="#ded8ca" />
+        </linearGradient>
+      </defs>
+      <path fill={isHalf ? `url(#${halfStarId})` : "currentColor"} d="m12 2.7 2.85 5.77 6.37.93-4.61 4.49 1.09 6.34L12 17.23 6.3 20.23l1.09-6.34L2.78 9.4l6.37-.93L12 2.7Z" />
+    </svg>
+  );
+}
+
+function formatReviewRating(rating: number) {
+  return `${(rating / 2).toFixed(1)} / 5`;
 }
 
 function formatRating(rating: number) {
