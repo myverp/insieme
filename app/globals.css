@@ -29,18 +29,20 @@ button:disabled { cursor: default; opacity: .55; }
 .insieme-toast-close[data-close-button] { border-color: var(--border); background: var(--surface); color: var(--text); }
 
 .app-shell { width: min(1220px, calc(100% - 48px)); margin: 0 auto; padding: 42px 0 80px; }
-.simple-header { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 72px; margin-bottom: 18px; overflow: hidden; }
-.simple-header h1 { position: relative; z-index: 1; display: inline-flex; align-items: flex-start; margin: 0; color: var(--text); font-family: var(--font-site); font-size: clamp(34px, 5vw, 48px); font-weight: 650; letter-spacing: -.035em; }
+.simple-header { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 24px; margin-bottom: 28px; }
+.simple-header h1 { display: inline-flex; align-items: flex-start; min-width: 0; margin: 0; color: var(--text); font-family: var(--font-site); font-size: clamp(34px, 5vw, 48px); font-weight: 650; letter-spacing: -.035em; }
 .insieme-logo { display: inline-flex; align-items: flex-start; color: inherit; line-height: 1; }
-.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-right { display: grid; min-width: 0; justify-items: end; gap: 10px; }
+.header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .header-actions select, .header-actions > button, .logout-form button, .current-profile { min-height: 40px; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); font-weight: 700; }
-.header-actions select { max-width: 190px; color: var(--text); }
+.header-actions select { width: min(190px, 100%); max-width: 190px; color: var(--text); }
 .header-actions > button:hover, .logout-form button:hover { border-color: #b8b2a6; color: var(--text); }
 .current-profile { display: inline-flex; align-items: center; gap: 7px; text-decoration: none; }
 .current-profile:hover { border-color: #b8b2a6; color: var(--text); }
 .profile-avatar { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; background: #dfeadf; color: var(--accent-dark); font-size: 14px; font-weight: 850; letter-spacing: .04em; }
 .profile-avatar-small { width: 26px; height: 26px; font-size: 10px; }
-.member-list { position: absolute; right: 0; bottom: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; transform: translateY(100%); padding-top: 4px; }
+.member-list { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; width: 100%; }
+.member-list-label { color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
 .member-chip, .review-author { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .member-chip { padding: 4px 8px 4px 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
 .header-actions > button:nth-of-type(2) { border-color: var(--accent); background: var(--accent); color: #fff; }
@@ -122,7 +124,15 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .list-section { margin-top: 48px; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 17px; }
-.list-heading h2 { margin: 0; font-family: var(--font-site); font-size: 30px; letter-spacing: -.035em; }
+.list-heading h2 { min-width: 0; margin: 0; font-family: var(--font-site); font-size: 30px; letter-spacing: -.035em; }
+.list-heading-toggle { display: inline-flex; align-items: center; max-width: 100%; gap: 13px; padding: 3px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.list-heading-toggle > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-heading-toggle:hover { color: var(--accent-dark); }
+.collapse-arrow { width: 10px; height: 10px; flex: none; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .25s ease; }
+.list-heading-toggle[aria-expanded="true"] .collapse-arrow { transform: rotate(45deg); }
+.collapsible-panel { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows .32s ease, opacity .2s ease; }
+.collapsible-panel.is-collapsed { grid-template-rows: 0fr; opacity: 0; }
+.collapsible-inner { min-height: 0; overflow: hidden; }
 .clear-button { padding: 7px 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--danger); transition: background .15s, border-color .15s; }
 .clear-button:hover { border-color: #e7c8c4; background: #fbefed; }
 
@@ -323,9 +333,13 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 @media (max-width: 700px) {
-  .simple-header { align-items: flex-start; flex-direction: column; overflow: visible; }
-  .header-actions { width: 100%; flex-wrap: wrap; }
-  .header-actions select { min-width: 0; flex: 1 1 160px; }
+  .simple-header { grid-template-columns: 1fr; gap: 16px; margin-bottom: 24px; }
+  .header-right { width: 100%; justify-items: stretch; }
+  .header-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); width: 100%; }
+  .header-actions select { grid-column: 1 / -1; width: 100%; max-width: none; }
+  .header-actions > button, .current-profile, .logout-form, .logout-form button { min-width: 0; width: 100%; }
+  .current-profile { justify-content: center; }
+  .member-list { justify-content: flex-start; }
   .app-shell { width: min(100% - 24px, 1180px); padding-top: 24px; }
   .search-panel { padding: 16px; }
   .search-results { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -357,6 +371,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   .search-row button { min-height: 44px; }
   .film-info { padding: 12px 12px 5px; }
   .film-title { font-size: 15px; }
+  .list-heading h2 { font-size: clamp(22px, 7vw, 30px); }
 }
 
 @media (max-width: 350px) {

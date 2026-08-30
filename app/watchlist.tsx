@@ -102,6 +102,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [reviewSaving, setReviewSaving] = useState(false);
   const [members, setMembers] = useState<Profile[]>([profile]);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
+  const [watchlistOpen, setWatchlistOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(true);
   const shouldReduceMotion = useReducedMotion();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailsDialog = useRef<HTMLDialogElement>(null);
@@ -514,27 +516,30 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     <main className="app-shell">
       <header className="simple-header">
         <h1><InsiemeLogo /></h1>
-        <div className="header-actions">
-          <label className="sr-only" htmlFor="watchlist-selector">Current Watchlist</label>
-          <select
-            id="watchlist-selector"
-            value={watchlistId}
-            onChange={(event) => void selectList(event.target.value)}
-            disabled={listAction !== null}
-          >
-            {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <button type="button" onClick={() => void createList()} disabled={listAction !== null}>New list</button>
-          <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
-            {listAction === "invite" ? "Copying…" : "Invite"}
-          </button>
-          <Link href="/profile" className="current-profile"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
-          <form action={logout} className="logout-form">
-            <button type="submit">Log out</button>
-          </form>
-        </div>
-        <div className="member-list" aria-label="Watchlist members">
-          {members.map((member) => <span className="member-chip" key={member.userId}><ProfileAvatar displayName={member.displayName} small /><span>{member.displayName}</span></span>)}
+        <div className="header-right">
+          <div className="header-actions">
+            <label className="sr-only" htmlFor="watchlist-selector">Current Watchlist</label>
+            <select
+              id="watchlist-selector"
+              value={watchlistId}
+              onChange={(event) => void selectList(event.target.value)}
+              disabled={listAction !== null}
+            >
+              {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <button type="button" onClick={() => void createList()} disabled={listAction !== null}>New list</button>
+            <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
+              {listAction === "invite" ? "Copying…" : "Invite"}
+            </button>
+            <Link href="/profile" className="current-profile"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
+            <form action={logout} className="logout-form">
+              <button type="submit">Log out</button>
+            </form>
+          </div>
+          <div className="member-list" role="group" aria-label="Watchlist members">
+            <span className="member-list-label">Members</span>
+            {members.map((member) => <span className="member-chip" key={member.userId}><ProfileAvatar displayName={member.displayName} small /><span>{member.displayName}</span></span>)}
+          </div>
         </div>
       </header>
 
@@ -653,103 +658,133 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
 
       <section className="list-section" aria-labelledby="watchlist-heading">
         <div className="list-heading">
-          <h2 id="watchlist-heading">Список до перегляду!!</h2>
+          <h2 id="watchlist-heading">
+            <button
+              className="list-heading-toggle"
+              type="button"
+              aria-expanded={watchlistOpen}
+              aria-controls="watchlist-content"
+              onClick={() => setWatchlistOpen((open) => !open)}
+            >
+              <span>Список до перегляду!!</span>
+              <span className="collapse-arrow" aria-hidden="true" />
+            </button>
+          </h2>
         </div>
 
-        {!ready ? (
-          <p className="empty-list" role="status">Loading our shared list…</p>
-        ) : watchlist.length ? (
-          <ul className="film-grid">
-            <AnimatePresence initial={false} mode="popLayout">
-              {watchlist.map((movie) => (
-                <motion.li
-                  className="group"
-                  key={movie.id}
-                  layout={!shouldReduceMotion}
-                  initial={shouldReduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={shouldReduceMotion ? undefined : { opacity: 0, y: 18, scale: 0.92 }}
-                  whileHover={shouldReduceMotion ? undefined : { y: -4 }}
-                  transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
-                >
-                  <button
-                    className="film-details-trigger"
-                    type="button"
-                    onClick={() => void openDetails(movie)}
-                    aria-haspopup="dialog"
-                    aria-label={`View details for ${movie.title}`}
-                  >
-                    <Poster movie={movie} size="card" />
-                    <span className="film-info">
-                      <span className="film-title" title={movie.title}>{movie.title}</span>
-                      <span className="film-meta">{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
-                      {movie.overview ? <span className="overview">{movie.overview}</span> : null}
-                    </span>
-                  </button>
-                  <div className="film-actions">
-                    <button
-                      className="watched-button"
-                      type="button"
-                      onClick={() => void markWatched(movie)}
+        <div id="watchlist-content" className={`collapsible-panel${watchlistOpen ? "" : " is-collapsed"}`} aria-hidden={!watchlistOpen} inert={!watchlistOpen}>
+          <div className="collapsible-inner">
+            {!ready ? (
+              <p className="empty-list" role="status">Loading our shared list…</p>
+            ) : watchlist.length ? (
+              <ul className="film-grid">
+                <AnimatePresence initial={false} mode="popLayout">
+                  {watchlist.map((movie) => (
+                    <motion.li
+                      className="group"
+                      key={movie.id}
+                      layout={!shouldReduceMotion}
+                      initial={shouldReduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={shouldReduceMotion ? undefined : { opacity: 0, y: 18, scale: 0.92 }}
+                      whileHover={shouldReduceMotion ? undefined : { y: -4 }}
+                      transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
                     >
-                      Watched
-                    </button>
-                    <button
-                      className="remove-button"
-                      type="button"
-                      onClick={() => removeMovie(movie)}
-                      aria-label={`Remove ${movie.title}`}
-                      title={`Remove ${movie.title}`}
-                    >
-                      <TrashIcon />
-                    </button>
-                  </div>
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        ) : (
-          <p className="empty-list">Your list is empty. Search for a film above and press Add.</p>
-        )}
+                      <button
+                        className="film-details-trigger"
+                        type="button"
+                        onClick={() => void openDetails(movie)}
+                        aria-haspopup="dialog"
+                        aria-label={`View details for ${movie.title}`}
+                      >
+                        <Poster movie={movie} size="card" />
+                        <span className="film-info">
+                          <span className="film-title" title={movie.title}>{movie.title}</span>
+                          <span className="film-meta">{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
+                          {movie.overview ? <span className="overview">{movie.overview}</span> : null}
+                        </span>
+                      </button>
+                      <div className="film-actions">
+                        <button
+                          className="watched-button"
+                          type="button"
+                          onClick={() => void markWatched(movie)}
+                        >
+                          Watched
+                        </button>
+                        <button
+                          className="remove-button"
+                          type="button"
+                          onClick={() => removeMovie(movie)}
+                          aria-label={`Remove ${movie.title}`}
+                          title={`Remove ${movie.title}`}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+            ) : (
+              <p className="empty-list">Your list is empty. Search for a film above and press Add.</p>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="list-section history-section" aria-labelledby="history-heading">
         <div className="list-heading">
-          <h2 id="history-heading">Історія переглядіііів!&lt;3</h2>
+          <h2 id="history-heading">
+            <button
+              className="list-heading-toggle"
+              type="button"
+              aria-expanded={historyOpen}
+              aria-controls="history-content"
+              onClick={() => setHistoryOpen((open) => !open)}
+            >
+              <span>Історія переглядіііів!&lt;3</span>
+              <span className="collapse-arrow" aria-hidden="true" />
+            </button>
+          </h2>
         </div>
 
-        {history.length ? (
-          <ul className="film-grid history-grid">
-            <AnimatePresence initial={false} mode="popLayout">
-              {history.map((movie) => (
-                <motion.li
-                  className="group history-card"
-                  key={movie.id}
-                  layout={!shouldReduceMotion}
-                  initial={shouldReduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
-                >
-                  <button
-                    className="film-details-trigger"
-                    type="button"
-                    onClick={() => void openDetails(movie)}
-                    aria-haspopup="dialog"
-                    aria-label={`View details for ${movie.title}`}
-                  >
-                    <Poster movie={movie} size="card" />
-                    <span className="film-info">
-                      <span className="film-title" title={movie.title}>{movie.title}</span>
-                      <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
-                    </span>
-                  </button>
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        ) : (
-          <p className="empty-list">Films marked as watched will appear here.</p>
-        )}
+        <div id="history-content" className={`collapsible-panel${historyOpen ? "" : " is-collapsed"}`} aria-hidden={!historyOpen} inert={!historyOpen}>
+          <div className="collapsible-inner">
+            {history.length ? (
+              <ul className="film-grid history-grid">
+                <AnimatePresence initial={false} mode="popLayout">
+                  {history.map((movie) => (
+                    <motion.li
+                      className="group history-card"
+                      key={movie.id}
+                      layout={!shouldReduceMotion}
+                      initial={shouldReduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
+                    >
+                      <button
+                        className="film-details-trigger"
+                        type="button"
+                        onClick={() => void openDetails(movie)}
+                        aria-haspopup="dialog"
+                        aria-label={`View details for ${movie.title}`}
+                      >
+                        <Poster movie={movie} size="card" />
+                        <span className="film-info">
+                          <span className="film-title" title={movie.title}>{movie.title}</span>
+                          <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
+                        </span>
+                      </button>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+            ) : (
+              <p className="empty-list">Films marked as watched will appear here.</p>
+            )}
+          </div>
+        </div>
       </section>
 
       <footer className="tmdb-footer">
