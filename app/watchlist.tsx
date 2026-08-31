@@ -105,7 +105,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
   const [newListName, setNewListName] = useState("");
   const [watchlistOpen, setWatchlistOpen] = useState(true);
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const shouldReduceMotion = useReducedMotion();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -737,7 +737,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
                           <span className="film-meta">{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
-                          {movie.overview ? <span className="overview">{movie.overview}</span> : null}
                         </span>
                       </button>
                       <div className="film-actions">
@@ -1013,6 +1012,21 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                   <p className="trailer-unavailable">No trailer is available for this film.</p>
                 )}
               </>
+            ) : null}
+
+            {watchlist.some((movie) => movie.id === selectedMovie.id) ? (
+              <div className="details-actions">
+                <button
+                  className="details-remove-button"
+                  type="button"
+                  onClick={() => {
+                    detailsDialog.current?.close();
+                    removeMovie(selectedMovie);
+                  }}
+                >
+                  Remove from Watchlist
+                </button>
+              </div>
             ) : null}
 
             {history.some((movie) => movie.id === selectedMovie.id) ? (
