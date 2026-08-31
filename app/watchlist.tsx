@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
-import { logout } from "@/app/auth/actions";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -51,13 +50,13 @@ type MovieDetails = {
 
 const STORAGE_KEY = "insieme-simple-watchlist-v1";
 const SEARCH_PLACEHOLDERS = [
-  "сьогодні настрій подивитись ромкомчіки?",
-  "а якщо щось аби поностальгувати...",
-  "ромка любить тебе, до речі",
-  "а може старих добрих друзів??",
-  "сьогодні дивимось фільм про нас, the beauty and the beast",
-  "комедії не вистачає в нашому житті!!!!",
-  "як щодо драми? :)",
+  "in the mood for a rom-com?",
+  "something nostalgic tonight?",
+  "find a film you will love",
+  "how about an old favorite?",
+  "a film for the two of us",
+  "we could use a comedy",
+  "what about a drama?",
 ] as const;
 
 const GENRES = [
@@ -88,6 +87,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [searchAttempted, setSearchAttempted] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [searchPlaceholder, setSearchPlaceholder] = useState<string>(SEARCH_PLACEHOLDERS[0]);
   const [ready, setReady] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
@@ -102,11 +103,14 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [reviewSaving, setReviewSaving] = useState(false);
   const [members, setMembers] = useState<Profile[]>([profile]);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
+  const [newListName, setNewListName] = useState("");
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const shouldReduceMotion = useReducedMotion();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const detailsDialog = useRef<HTMLDialogElement>(null);
+  const managerDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -203,6 +207,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         body: JSON.stringify({ id }),
       });
       if (!response.ok) throw new Error("The Watchlist could not be selected.");
+      managerDialog.current?.close();
       router.refresh();
       setListAction(null);
     } catch (error) {
@@ -211,18 +216,20 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     }
   }
 
-  async function createList() {
-    const name = window.prompt("Name your new Watchlist", "We two");
-    if (!name?.trim()) return;
+  async function createList(name: string) {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
     setListAction("create");
     try {
       const response = await fetch("/api/watchlists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name: trimmedName }),
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "The Watchlist could not be created.");
+      setNewListName("");
+      managerDialog.current?.close();
       router.refresh();
       setListAction(null);
     } catch (error) {
@@ -262,15 +269,21 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     if (!trimmedValue && !hasFilters) {
       setResults([]);
       setMessage("");
+      setSearchAttempted(false);
+      setSearchError(false);
       return;
     }
 
     if (trimmedValue.length === 1) {
       setResults([]);
       setMessage("Type at least two characters.");
+      setSearchAttempted(false);
+      setSearchError(false);
       return;
     }
 
+    setSearchAttempted(true);
+    setSearchError(false);
     setLoading(true);
     setMessage("");
     try {
@@ -282,6 +295,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       setMessage(data.movies?.length ? (data.message ?? "") : (data.message || "No films found."));
     } catch (error) {
       setResults([]);
+      setSearchError(true);
       setMessage(error instanceof Error ? error.message : "Film search is unavailable.");
     } finally {
       setLoading(false);
@@ -294,6 +308,20 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     searchTimer.current = setTimeout(() => void searchMovies(value), 350);
   }
 
+  function openManager() {
+    if (!managerDialog.current?.open) managerDialog.current?.showModal();
+  }
+
+  function clearSearch() {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    setQuery("");
+    setResults([]);
+    setMessage("");
+    setSearchAttempted(false);
+    setSearchError(false);
+    searchInput.current?.focus();
+  }
+
   function updateFilter(name: keyof SearchFilters, value: string) {
     setFilters((current) => ({ ...current, [name]: value }));
   }
@@ -304,6 +332,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     else {
       setResults([]);
       setMessage("");
+      setSearchAttempted(false);
+      setSearchError(false);
     }
   }
 
@@ -515,7 +545,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   return (
     <main className="app-shell">
       <header className="simple-header">
-        <h1><InsiemeLogo /></h1>
+        <div className="header-brand"><h1><InsiemeLogo /></h1></div>
         <div className="header-right">
           <div className="header-actions">
             <label className="sr-only" htmlFor="watchlist-selector">Current Watchlist</label>
@@ -527,38 +557,35 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             >
               {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
-            <button type="button" onClick={() => void createList()} disabled={listAction !== null}>New list</button>
-            <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
-              {listAction === "invite" ? "Copying…" : "Invite"}
+            <button className="manage-watchlists-button" type="button" onClick={openManager} disabled={listAction !== null}>
+              Manage Watchlists
             </button>
-            <Link href="/profile" className="current-profile"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
-            <form action={logout} className="logout-form">
-              <button type="submit">Log out</button>
-            </form>
-          </div>
-          <div className="member-list" role="group" aria-label="Watchlist members">
-            <span className="member-list-label">Members</span>
-            {members.map((member) => <span className="member-chip" key={member.userId}><ProfileAvatar displayName={member.displayName} small /><span>{member.displayName}</span></span>)}
           </div>
         </div>
+        <Link href="/profile" className="current-profile header-identity"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
       </header>
 
-      <section className="search-panel" aria-labelledby="add-film-heading">
-        <h2 id="add-film-heading">Додать фільмец</h2>
+      <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
+        <h2 id="add-film-heading">Add a film</h2>
         <label className="sr-only" htmlFor="film-search">Search by title</label>
-        <div className="search-row">
-          <input
-            id="film-search"
-            type="search"
-            value={query}
-            onChange={(event) => handleQueryChange(event.target.value)}
-            placeholder={searchPlaceholder}
-            autoComplete="off"
-          />
-          <button type="button" onClick={() => void searchMovies(query)} disabled={loading}>
-            {loading ? "Searching…" : "ricerca!"}
+        <form className="search-row" onSubmit={(event) => { event.preventDefault(); void searchMovies(query); }}>
+          <div className="search-input-wrap">
+            <input
+              ref={searchInput}
+              id="film-search"
+              type="search"
+              value={query}
+              onChange={(event) => handleQueryChange(event.target.value)}
+              placeholder={searchPlaceholder}
+              autoComplete="off"
+              enterKeyHint="search"
+            />
+            {query ? <button className="clear-search" type="button" onClick={clearSearch} aria-label="Clear search">×</button> : null}
+          </div>
+          <button type="submit" disabled={loading}>
+            {loading ? "Searching…" : "Search"}
           </button>
-        </div>
+        </form>
 
         <details className="advanced-search">
           <summary>
@@ -609,49 +636,57 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
           </div>
         </details>
 
-        {message ? <p className="status" role="status">{message}</p> : null}
+        {message && !loading ? <p className="status" role="status">{message}</p> : null}
 
-        {results.length ? (
+        {loading || results.length || searchAttempted ? (
           <div className="results-block">
-            <h3>Search results</h3>
-            <ul className="search-results" aria-label="Film search results">
-              <AnimatePresence initial={false} mode="popLayout">
-                {results.map((movie) => {
-                  const added = watchlist.some((item) => item.id === movie.id);
-                  const watched = history.some((item) => item.id === movie.id);
-                  return (
-                    <motion.li
-                      className="group"
-                      key={movie.id}
-                      layout={!shouldReduceMotion}
-                      initial={shouldReduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8, scale: 0.98 }}
-                      transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
-                    >
-                  <button
-                    className="result-details-trigger"
-                    type="button"
-                    onClick={() => void openDetails(movie)}
-                    aria-haspopup="dialog"
-                    aria-label={`View details for ${movie.title}`}
-                  >
-                    <Poster movie={movie} size="card" />
-                    <span className="result-info">
-                      <strong title={movie.title}>{movie.title}</strong>
-                      <span>{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
-                    </span>
-                  </button>
-                  <div className="result-actions">
-                    <button type="button" onClick={() => void addMovie(movie)} disabled={added || watched}>
-                      {watched ? "Watched" : added ? "Added" : "Add"}
-                    </button>
-                  </div>
-                    </motion.li>
-                  );
-                })}
-              </AnimatePresence>
-            </ul>
+            <div className="results-heading"><h3>Search results</h3>{results.length ? <span>{results.length} found</span> : null}</div>
+            {loading ? <FilmGridSkeleton count={5} compact /> : results.length ? (
+              <ul className="search-results" aria-label="Film search results">
+                <AnimatePresence initial={false} mode="popLayout">
+                  {results.map((movie) => {
+                    const added = watchlist.some((item) => item.id === movie.id);
+                    const watched = history.some((item) => item.id === movie.id);
+                    return (
+                      <motion.li
+                        className="group"
+                        key={movie.id}
+                        layout={!shouldReduceMotion}
+                        initial={shouldReduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8, scale: 0.98 }}
+                        transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
+                      >
+                        <button
+                          className="result-details-trigger"
+                          type="button"
+                          onClick={() => void openDetails(movie)}
+                          aria-haspopup="dialog"
+                          aria-label={`View details for ${movie.title}`}
+                        >
+                          <Poster movie={movie} size="card" />
+                          <span className="result-info">
+                            <strong title={movie.title}>{movie.title}</strong>
+                            <span>{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
+                          </span>
+                        </button>
+                        <div className="result-actions">
+                          <button type="button" onClick={() => void addMovie(movie)} disabled={added || watched}>
+                            {watched ? "Watched" : added ? "Added" : "Add"}
+                          </button>
+                        </div>
+                      </motion.li>
+                    );
+                  })}
+                </AnimatePresence>
+              </ul>
+            ) : (
+              <div className={`search-empty${searchError ? " search-empty-error" : ""}`} role={searchError ? "alert" : "status"}>
+                <span className="empty-state-icon" aria-hidden="true">{searchError ? "!" : "⌕"}</span>
+                <strong>{searchError ? "Search unavailable" : "No films found"}</strong>
+                <span>{searchError ? message : "Try a different title or loosen your filters."}</span>
+              </div>
+            )}
           </div>
         ) : null}
       </section>
@@ -666,7 +701,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               aria-controls="watchlist-content"
               onClick={() => setWatchlistOpen((open) => !open)}
             >
-              <span>Список до перегляду!!</span>
+              <span>Watchlist</span>
+              {watchlist.length ? <span className="list-count">{watchlist.length}</span> : null}
               <span className="collapse-arrow" aria-hidden="true" />
             </button>
           </h2>
@@ -675,7 +711,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         <div id="watchlist-content" className={`collapsible-panel${watchlistOpen ? "" : " is-collapsed"}`} aria-hidden={!watchlistOpen} inert={!watchlistOpen}>
           <div className="collapsible-inner">
             {!ready ? (
-              <p className="empty-list" role="status">Loading our shared list…</p>
+              <FilmGridSkeleton count={4} />
             ) : watchlist.length ? (
               <ul className="film-grid">
                 <AnimatePresence initial={false} mode="popLayout">
@@ -727,7 +763,12 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                 </AnimatePresence>
               </ul>
             ) : (
-              <p className="empty-list">Your list is empty. Search for a film above and press Add.</p>
+              <div className="empty-state">
+                <span className="empty-state-icon empty-state-list-icon" aria-hidden="true"><ListIcon /></span>
+                <strong>Your Watchlist is empty</strong>
+                <span>Search for a film above and add it to your shared list.</span>
+                <button type="button" onClick={() => searchInput.current?.focus()}>Find a film</button>
+              </div>
             )}
           </div>
         </div>
@@ -743,7 +784,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               aria-controls="history-content"
               onClick={() => setHistoryOpen((open) => !open)}
             >
-              <span>Історія переглядіііів!&lt;3</span>
+              <span>Watched history</span>
+              {history.length ? <span className="list-count">{history.length}</span> : null}
               <span className="collapse-arrow" aria-hidden="true" />
             </button>
           </h2>
@@ -781,7 +823,11 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                 </AnimatePresence>
               </ul>
             ) : (
-              <p className="empty-list">Films marked as watched will appear here.</p>
+              <div className="empty-state">
+                <span className="empty-state-icon empty-state-list-icon" aria-hidden="true">◷</span>
+                <strong>No watched films yet</strong>
+                <span>Films you mark as watched will appear here.</span>
+              </div>
             )}
           </div>
         </div>
@@ -800,6 +846,97 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       </footer>
 
       <dialog
+        className="watchlist-manager-dialog"
+        ref={managerDialog}
+        aria-labelledby="watchlist-manager-title"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") managerDialog.current?.close();
+        }}
+      >
+        <button className="dialog-close" type="button" onClick={() => managerDialog.current?.close()} aria-label="Close Watchlist manager">×</button>
+        <div className="manager-content">
+          <header className="details-heading">
+            <p>Watchlists</p>
+            <h2 id="watchlist-manager-title">Manage Watchlists</h2>
+            <p className="tagline">Choose a list, invite a friend, or start a new one.</p>
+          </header>
+
+          <section className="manager-section" aria-labelledby="your-watchlists-title">
+            <div className="manager-section-heading">
+              <div>
+                <h3 id="your-watchlists-title">Your Watchlists</h3>
+                <p>Switch between the lists you belong to.</p>
+              </div>
+            </div>
+            <div className="manager-list">
+              {watchlists.map((item) => (
+                <div className={`manager-list-item${item.id === watchlistId ? " is-current" : ""}`} key={item.id}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    {item.id === watchlistId ? <span className="manager-current-label">Current</span> : null}
+                  </div>
+                  {item.id !== watchlistId ? (
+                    <button type="button" onClick={() => void selectList(item.id)} disabled={listAction !== null}>Use list</button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="manager-section" aria-labelledby="watchlist-members-title">
+            <div className="manager-section-heading">
+              <div>
+                <h3 id="watchlist-members-title">Members</h3>
+                <p>People who share this Watchlist.</p>
+              </div>
+              <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
+                {listAction === "invite" ? "Copying…" : "Copy invite link"}
+              </button>
+            </div>
+            <ul className="manager-members" aria-label="Watchlist members">
+              {members.map((member) => (
+                <li className="manager-member" key={member.userId}>
+                  <ProfileAvatar displayName={member.displayName} small />
+                  <span>{member.displayName}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="manager-section manager-create-section" aria-labelledby="new-watchlist-title">
+            <div className="manager-section-heading">
+              <div>
+                <h3 id="new-watchlist-title">Create a new Watchlist</h3>
+                <p>Start a separate list for another group or mood.</p>
+              </div>
+            </div>
+            <form
+              className="manager-create-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createList(newListName);
+              }}
+            >
+              <label htmlFor="new-watchlist-name">Watchlist name</label>
+              <div className="manager-create-row">
+                <input
+                  id="new-watchlist-name"
+                  value={newListName}
+                  onChange={(event) => setNewListName(event.target.value)}
+                  maxLength={80}
+                  placeholder="For example: Weekend picks"
+                  required
+                />
+                <button type="submit" disabled={listAction !== null || !newListName.trim()}>
+                  {listAction === "create" ? "Creating…" : "Create list"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </dialog>
+
+      <dialog
         className="details-dialog"
         ref={detailsDialog}
         aria-labelledby="details-title"
@@ -816,7 +953,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               {details?.tagline ? <p className="tagline">{details.tagline}</p> : null}
             </header>
 
-            {detailsLoading ? <p className="details-state" role="status">Loading details…</p> : null}
+            {detailsLoading ? <div className="details-state" role="status"><span className="details-spinner" aria-hidden="true" />Loading film details…</div> : null}
             {detailsError ? <p className="details-state details-error" role="alert">{detailsError}</p> : null}
 
             {details ? (
@@ -955,11 +1092,14 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
 
 function StarRating({ value, onChange, disabled }: { value: number | null; onChange: (rating: number | null) => void; disabled: boolean }) {
   const label = value ? `${formatReviewRating(value)} selected` : "No rating selected";
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const displayedRating = hoverRating ?? value;
 
   return (
     <div className="star-rating" role="group" aria-label={`Film rating: ${label}`}>
-      <RatingStars rating={value} />
-      <div className="star-rating-options">
+      <div className="star-rating-control" onMouseLeave={() => setHoverRating(null)}>
+        <RatingStars rating={displayedRating} />
+        <div className="star-rating-options" role="radiogroup" aria-label="Choose a rating from half to five stars">
         {Array.from({ length: 10 }, (_, index) => {
           const rating = index + 1;
           return (
@@ -968,12 +1108,27 @@ function StarRating({ value, onChange, disabled }: { value: number | null; onCha
               type="button"
               className="star-rating-option"
               aria-label={`Rate ${formatReviewRating(rating)}`}
-              aria-pressed={value === rating}
+              aria-checked={value === rating}
+              role="radio"
+              data-rating={rating}
+              tabIndex={value === rating || (!value && rating === 1) ? 0 : -1}
               disabled={disabled}
+              onMouseEnter={() => setHoverRating(rating)}
+              onFocus={() => setHoverRating(rating)}
+              onBlur={() => setHoverRating(null)}
+              onKeyDown={(event) => {
+                const direction = event.key === "ArrowRight" || event.key === "ArrowUp" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 0;
+                if (!direction) return;
+                event.preventDefault();
+                const nextRating = Math.min(10, Math.max(1, rating + direction));
+                onChange(nextRating);
+                (event.currentTarget.parentElement?.querySelector(`[data-rating="${nextRating}"]`) as HTMLButtonElement | null)?.focus();
+              }}
               onClick={() => onChange(rating)}
             />
           );
         })}
+        </div>
       </div>
       {value ? (
         <button type="button" className="clear-rating" onClick={() => onChange(null)} disabled={disabled}>
@@ -982,6 +1137,23 @@ function StarRating({ value, onChange, disabled }: { value: number | null; onCha
       ) : null}
       <output className="star-rating-value" aria-live="polite">{value ? formatReviewRating(value) : "No rating"}</output>
     </div>
+  );
+}
+
+function FilmGridSkeleton({ count, compact = false }: { count: number; compact?: boolean }) {
+  return (
+    <ul className={`${compact ? "search-results" : "film-grid"} skeleton-grid`} aria-label="Loading films" aria-hidden="true">
+      {Array.from({ length: count }, (_, index) => (
+        <li key={index}>
+          <span className="skeleton-poster" />
+          <span className="skeleton-copy">
+            <span className="skeleton-line skeleton-line-title" />
+            <span className="skeleton-line" />
+          </span>
+          {!compact ? <span className="skeleton-action" /> : null}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1063,6 +1235,17 @@ function TrashIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+    </svg>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <circle cx="4" cy="6" r="1" fill="currentColor" />
+      <circle cx="4" cy="12" r="1" fill="currentColor" />
+      <circle cx="4" cy="18" r="1" fill="currentColor" />
+      <path d="M8 6h12M8 12h12M8 18h12" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
     </svg>
   );
 }
