@@ -8,6 +8,7 @@ type TmdbDetails = {
   overview?: string;
   release_date?: string;
   runtime?: number | null;
+  vote_average?: number;
   imdb_id?: string | null;
   genres?: Array<{ name: string }>;
   production_countries?: Array<{ name: string }>;
@@ -74,7 +75,8 @@ export async function GET(
       .sort((a, b) => a.order - b.order)
       .slice(0, 6)
       .map((person) => person.name);
-    const rating = await getImdbRating({
+    const imdbRating = await getImdbRating({
+      tmdbId: data.id,
       imdbId: data.imdb_id ?? undefined,
       title: data.title,
       year: data.release_date?.slice(0, 4),
@@ -88,7 +90,8 @@ export async function GET(
         overview: data.overview ?? "",
         releaseDate: data.release_date ?? "",
         runtime: data.runtime ?? 0,
-        rating,
+        tmdbRating: data.vote_average ?? 0,
+        imdbRating,
         genres: (data.genres ?? []).map((genre) => genre.name),
         countries: (data.production_countries ?? []).map((country) => country.name),
         director,

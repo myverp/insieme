@@ -7,6 +7,7 @@ export type Movie = {
   poster: string;
   overview: string;
   rating: number;
+  ratingSource: "tmdb" | "imdb" | "legacy";
 };
 
 export type HistoryMovie = Movie & { watchedAt: string };
@@ -28,7 +29,8 @@ export type MovieDetails = {
   overview: string;
   releaseDate: string;
   runtime: number;
-  rating: number;
+  tmdbRating: number;
+  imdbRating: number;
   genres: string[];
   countries: string[];
   director: string;

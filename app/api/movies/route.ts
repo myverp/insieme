@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getImdbRating } from "@/app/lib/imdb";
-import { collectMovieResults, type RatedMovie } from "@/app/lib/movie-results";
+import { collectMovieResults } from "@/app/lib/movie-results";
 
 type TmdbMovie = {
   id: number;
@@ -9,6 +8,7 @@ type TmdbMovie = {
   poster_path?: string | null;
   overview?: string;
   vote_average?: number;
+  vote_count?: number;
   popularity?: number;
   genre_ids?: number[];
 };
@@ -18,11 +18,8 @@ type TmdbPerson = { id: number; name: string; known_for_department?: string; pop
 type TmdbPersonResponse = { results?: TmdbPerson[]; status_message?: string };
 type TmdbCreditsResponse = { crew?: Array<TmdbMovie & { job?: string }>; status_message?: string };
 
-const allowedSorts = new Set(["popularity.desc", "imdb_rating.desc", "primary_release_date.desc", "primary_release_date.asc"]);
-
-// High-rating searches enrich several TMDb pages with IMDb data. Give that
-// bounded scan enough time to finish instead of failing at Vercel's default.
-export const maxDuration = 60;
+const allowedSorts = new Set(["popularity.desc", "vote_average.desc", "primary_release_date.desc", "primary_release_date.asc"]);
+const MIN_RELIABLE_VOTE_COUNT = 100;
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -38,7 +35,7 @@ export async function GET(request: NextRequest) {
   const hasFilters = Boolean(director || genre || decade || minRating || sort !== "popularity.desc");
 
   if (rawMinRating && (!Number.isFinite(Number(rawMinRating)) || minRating < 0 || minRating > 10)) {
-    return NextResponse.json({ error: "Minimum IMDb rating must be between 0 and 10." }, { status: 400 });
+    return NextResponse.json({ error: "Minimum TMDb score must be between 0 and 10." }, { status: 400 });
   }
 
   if ((!query || query.length < 2) && !hasFilters) {
@@ -50,10 +47,6 @@ export async function GET(request: NextRequest) {
   if (!token) {
     return NextResponse.json({ error: "Film search needs a TMDb API token." }, { status: 503 });
   }
-  if ((minRating || sort === "imdb_rating.desc") && !process.env.OMDB_API_KEY) {
-    return NextResponse.json({ error: "IMDb filtering needs an OMDb API key." }, { status: 503 });
-  }
-
   const isReadToken = token.length > 80 || token.includes(".");
   const headers: Record<string, string> = { Accept: "application/json" };
   if (isReadToken) headers.Authorization = `Bearer ${token}`;
@@ -92,7 +85,8 @@ export async function GET(request: NextRequest) {
     const applyLocalFilters = (movies: TmdbMovie[]) => movies.filter((movie) => {
       const year = Number(movie.release_date?.slice(0, 4));
       return (!genre || movie.genre_ids?.includes(genre))
-        && (!decade || (year >= decade && year <= decade + 9));
+        && (!decade || (year >= decade && year <= decade + 9))
+        && (!minRating || ((movie.vote_average ?? 0) >= minRating && (movie.vote_count ?? 0) >= MIN_RELIABLE_VOTE_COUNT));
     });
 
     const loadPage = async (page: number) => {
@@ -112,9 +106,12 @@ export async function GET(request: NextRequest) {
         return { movies: applyLocalFilters(movies), hasMore: page < (searched.total_pages ?? 1) };
       }
 
-      const tmdbSort = sort === "imdb_rating.desc" ? "popularity.desc" : sort;
-      const discoverParams = new URLSearchParams({ include_adult: "false", include_video: "false", page: String(page), sort_by: tmdbSort });
+      const discoverParams = new URLSearchParams({ include_adult: "false", include_video: "false", page: String(page), sort_by: sort });
       if (genre) discoverParams.set("with_genres", String(genre));
+      if (minRating) {
+        discoverParams.set("vote_average.gte", String(minRating));
+        discoverParams.set("vote_count.gte", String(MIN_RELIABLE_VOTE_COUNT));
+      }
       if (decade) {
         discoverParams.set("primary_release_date.gte", `${decade}-01-01`);
         discoverParams.set("primary_release_date.lte", `${decade + 9}-12-31`);
@@ -123,34 +120,22 @@ export async function GET(request: NextRequest) {
       return { movies: applyLocalFilters(discovered.results ?? []), hasMore: page < (discovered.total_pages ?? 1) };
     };
 
-    let ratingFailures = 0;
     const filteredMovies = await collectMovieResults({
       loadPage,
-      rateMovie: (movie) => getImdbRating({
-        tmdbId: movie.id,
-        title: movie.title,
-        year: movie.release_date?.slice(0, 4),
-        required: Boolean(minRating || sort === "imdb_rating.desc"),
-      }),
+      acceptMovie: (movie) => applyLocalFilters([movie]).length === 1,
       getMovieId: (movie) => movie.id,
-      onRateError: () => {
-        ratingFailures += 1;
-      },
-      minRating,
       compare: (first, second) => compareMovies(first, second, sort),
-      maxPages: minRating >= 8 ? 10 : 5,
-      scanAllPages: sort === "imdb_rating.desc",
+      maxPages: query ? 5 : 1,
+      scanAllPages: Boolean(query && sort !== "popularity.desc"),
     });
 
     return NextResponse.json({
-      movies: filteredMovies.map(({ movie, rating }) => toMovie(movie, rating)),
+      movies: filteredMovies.map(toMovie),
       message: resolvedDirector
         ? `Films directed by ${resolvedDirector}.`
-        : ratingFailures && filteredMovies.length
-          ? "Some films could not be rated by IMDb and were skipped."
-          : ratingFailures
-            ? "IMDb ratings are temporarily unavailable. Try again shortly."
-            : "",
+        : minRating
+          ? `TMDb scores use films with at least ${MIN_RELIABLE_VOTE_COUNT} votes.`
+          : "",
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "TMDb is temporarily unavailable." }, { status: 502 });
@@ -163,20 +148,21 @@ function parseNumber(value: string | null) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function compareMovies(a: RatedMovie<TmdbMovie>, b: RatedMovie<TmdbMovie>, sort: string) {
-  if (sort === "imdb_rating.desc") return b.rating - a.rating || (b.movie.popularity ?? 0) - (a.movie.popularity ?? 0);
-  if (sort === "primary_release_date.asc") return (a.movie.release_date ?? "9999").localeCompare(b.movie.release_date ?? "9999");
-  if (sort === "primary_release_date.desc") return (b.movie.release_date ?? "").localeCompare(a.movie.release_date ?? "");
-  return (b.movie.popularity ?? 0) - (a.movie.popularity ?? 0);
+function compareMovies(a: TmdbMovie, b: TmdbMovie, sort: string) {
+  if (sort === "vote_average.desc") return (b.vote_average ?? 0) - (a.vote_average ?? 0) || (b.vote_count ?? 0) - (a.vote_count ?? 0);
+  if (sort === "primary_release_date.asc") return (a.release_date ?? "9999").localeCompare(b.release_date ?? "9999");
+  if (sort === "primary_release_date.desc") return (b.release_date ?? "").localeCompare(a.release_date ?? "");
+  return (b.popularity ?? 0) - (a.popularity ?? 0);
 }
 
-function toMovie(movie: TmdbMovie, rating: number) {
+function toMovie(movie: TmdbMovie) {
   return {
     id: movie.id,
     title: movie.title,
     year: movie.release_date?.slice(0, 4) ?? "",
     poster: movie.poster_path ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : "",
     overview: movie.overview ?? "",
-    rating,
+    rating: movie.vote_average ?? 0,
+    ratingSource: "tmdb" as const,
   };
 }

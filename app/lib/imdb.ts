@@ -1,33 +1,84 @@
 import { unstable_cache } from "next/cache";
 import { parseImdbRating, type OmdbMovie } from "@/app/lib/imdb-rating";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 
 type ImdbLookup = {
   imdbId?: string;
   tmdbId?: number;
   title?: string;
   year?: string;
-  required?: boolean;
 };
 
-export async function getImdbRating({ imdbId, tmdbId, title, year, required = false }: ImdbLookup) {
+type CachedFilmRating = {
+  imdb_id: string | null;
+  imdb_rating: number | null;
+  lookup_status: "ok" | "unavailable";
+  fetched_at: string;
+};
+
+const RATING_CACHE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export async function getImdbRating({ imdbId, tmdbId, title, year }: ImdbLookup) {
+  const admin = createAdminClient();
+  if (admin && tmdbId) {
+    const { data, error } = await admin
+      .from("film_ratings")
+      .select("imdb_id,imdb_rating,lookup_status,fetched_at")
+      .eq("tmdb_id", tmdbId)
+      .maybeSingle();
+
+    if (error) console.error("IMDb cache read failed", { code: error.code });
+    const cached = data as CachedFilmRating | null;
+    if (cached && isFresh(cached.fetched_at)) return cached.imdb_rating ?? 0;
+    if (!imdbId && cached?.imdb_id) imdbId = cached.imdb_id;
+  }
+
   const apiKey = process.env.OMDB_API_KEY;
   if (!apiKey || (!imdbId && !tmdbId && !title)) {
-    if (required) throw new Error("IMDb ratings are temporarily unavailable.");
     return 0;
   }
 
   const resolvedImdbId = imdbId || (tmdbId ? await getImdbId(tmdbId) : "");
+  if (!resolvedImdbId && !title) {
+    await cacheRating(tmdbId, null, null, "unavailable");
+    return 0;
+  }
 
   try {
     const lookup = resolvedImdbId
       ? { imdbId: resolvedImdbId, title: "", year: "" }
       : { imdbId: "", title: title!, year: year ?? "" };
     const data = await getCachedOmdbMovie(apiKey, lookup.imdbId, lookup.title, lookup.year);
-    return parseImdbRating(data);
-  } catch (error) {
-    if (required) throw new Error("IMDb ratings are temporarily unavailable.", { cause: error });
+    const rating = parseImdbRating(data);
+    await cacheRating(tmdbId, resolvedImdbId || null, rating || null, rating ? "ok" : "unavailable");
+    return rating;
+  } catch {
     return 0;
   }
+}
+
+async function cacheRating(
+  tmdbId: number | undefined,
+  imdbId: string | null,
+  rating: number | null,
+  status: CachedFilmRating["lookup_status"],
+) {
+  const admin = createAdminClient();
+  if (!admin || !tmdbId) return;
+
+  const { error } = await admin.from("film_ratings").upsert({
+    tmdb_id: tmdbId,
+    imdb_id: imdbId,
+    imdb_rating: rating,
+    lookup_status: status,
+    fetched_at: new Date().toISOString(),
+  });
+  if (error) console.error("IMDb cache write failed", { code: error.code });
+}
+
+function isFresh(fetchedAt: string) {
+  const fetchedAtMs = Date.parse(fetchedAt);
+  return Number.isFinite(fetchedAtMs) && Date.now() - fetchedAtMs < RATING_CACHE_MAX_AGE_MS;
 }
 
 const getCachedOmdbMovie = unstable_cache(

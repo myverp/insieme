@@ -80,7 +80,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             const localMovies = JSON.parse(saved) as Movie[];
             if (Array.isArray(localMovies) && localMovies.length) {
               const sharedIds = new Set([...sharedState.movies, ...sharedState.history].map((movie) => movie.id));
-              const missingMovies = localMovies.filter((movie) => !sharedIds.has(movie.id));
+              const missingMovies = localMovies
+                .filter((movie) => !sharedIds.has(movie.id))
+                .map((movie) => ({ ...movie, ratingSource: "legacy" as const }));
               if (!cancelled) setLegacyMovies(missingMovies);
             }
           } catch {
@@ -485,7 +487,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                         <Poster movie={movie} size="card" />
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
-                          <span className="film-meta">{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
+                          <span className="film-meta">{movie.year || "Year unknown"} · {formatMovieRating(movie)}</span>
                         </span>
                       </button>
                       <div className="film-actions">
@@ -727,7 +729,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                 <dl className="details-facts">
                   {details.releaseDate ? <div><dt>Released</dt><dd>{formatDate(details.releaseDate)}</dd></div> : null}
                   {details.runtime ? <div><dt>Runtime</dt><dd>{formatRuntime(details.runtime)}</dd></div> : null}
-                  {details.rating ? <div><dt>IMDb rating</dt><dd>{details.rating.toFixed(1)} / 10</dd></div> : null}
+                  {details.tmdbRating ? <div><dt>TMDb score</dt><dd>{details.tmdbRating.toFixed(1)} / 10</dd></div> : null}
+                  {details.imdbRating ? <div><dt>IMDb rating</dt><dd>{details.imdbRating.toFixed(1)} / 10</dd></div> : null}
                   {details.director ? <div><dt>Director</dt><dd>{details.director}</dd></div> : null}
                 </dl>
 
@@ -958,6 +961,11 @@ function formatReviewRating(rating: number) {
 
 function formatRating(rating: number) {
   return rating ? rating.toFixed(1) : "N/A";
+}
+
+function formatMovieRating(movie: Movie) {
+  const source = movie.ratingSource === "legacy" ? "Score" : movie.ratingSource === "imdb" ? "IMDb" : "TMDb";
+  return `${source} ${formatRating(movie.rating)}`;
 }
 
 function formatRuntime(minutes: number) {

@@ -179,16 +179,16 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
             <span>Minimum rating</span>
             <select value={filters.minRating} onChange={(event) => updateFilter("minRating", event.target.value)}>
               <option value="">Any rating</option>
-              <option value="6">6+ on IMDb</option>
-              <option value="7">7+ on IMDb</option>
-              <option value="8">8+ on IMDb</option>
+              <option value="6">6+ on TMDb</option>
+              <option value="7">7+ on TMDb</option>
+              <option value="8">8+ on TMDb</option>
             </select>
           </label>
           <label>
             <span>Sort by</span>
             <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}>
               <option value="popularity.desc">Most popular</option>
-              <option value="imdb_rating.desc">Highest rated</option>
+              <option value="vote_average.desc">Highest rated</option>
               <option value="primary_release_date.desc">Newest first</option>
               <option value="primary_release_date.asc">Oldest first</option>
             </select>
@@ -215,7 +215,7 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
                       <SearchPoster movie={movie} />
                       <span className="result-info">
                         <strong title={movie.title}>{movie.title}</strong>
-                        <span>{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
+                        <span>{movie.year || "Year unknown"} · TMDb {formatRating(movie.rating)}</span>
                       </span>
                     </button>
                     <div className="result-actions">

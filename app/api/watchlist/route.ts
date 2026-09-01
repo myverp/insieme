@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getImdbRating } from "@/app/lib/imdb";
 import { createClient } from "@/app/lib/supabase/server";
 import { ensureWatchlists, selectWatchlist } from "@/app/lib/watchlist";
 
@@ -10,6 +9,7 @@ type MovieInput = {
   poster?: string;
   overview?: string;
   rating?: number;
+  ratingSource?: "tmdb" | "imdb" | "legacy";
 };
 
 type MovieRow = {
@@ -19,6 +19,7 @@ type MovieRow = {
   poster: string;
   overview: string;
   rating: number;
+  rating_source: "tmdb" | "imdb" | "legacy";
   watched_at: string | null;
 };
 
@@ -28,21 +29,17 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await auth.supabase
     .from("watchlist_movies")
-    .select("id,title,year,poster,overview,rating,watched_at")
+    .select("id,title,year,poster,overview,rating,rating_source,watched_at")
     .eq("watchlist_id", auth.watchlistId)
     .order("added_at", { ascending: true });
   if (error) return databaseError(error);
 
   const rows = data as MovieRow[];
-  const movies = await Promise.all(rows.filter((row) => !row.watched_at).map(async (row) => ({
-    ...toMovie(row),
-    rating: await getImdbRating({ tmdbId: Number(row.id), title: row.title, year: row.year }),
-  })));
-  const history = await Promise.all(rows.filter((row): row is MovieRow & { watched_at: string } => Boolean(row.watched_at)).map(async (row) => ({
+  const movies = rows.filter((row) => !row.watched_at).map(toMovie);
+  const history = rows.filter((row): row is MovieRow & { watched_at: string } => Boolean(row.watched_at)).map((row) => ({
     ...toMovie(row),
     watchedAt: row.watched_at,
-    rating: await getImdbRating({ tmdbId: Number(row.id), title: row.title, year: row.year }),
-  })));
+  }));
   history.sort((first, second) => new Date(second.watchedAt).getTime() - new Date(first.watchedAt).getTime());
 
   return NextResponse.json({ movies, history }, { headers: { "Cache-Control": "no-store" } });
@@ -65,6 +62,7 @@ export async function POST(request: NextRequest) {
       poster: input.poster?.slice(0, 1000) ?? "",
       overview: input.overview?.slice(0, 5000) ?? "",
       rating: clampRating(input.rating),
+      rating_source: isRatingSource(input.ratingSource) ? input.ratingSource : "tmdb",
     },
     { onConflict: "watchlist_id,id", ignoreDuplicates: true },
   );
@@ -133,7 +131,11 @@ function clampRating(value: number | undefined) {
 }
 
 function toMovie(row: MovieRow) {
-  return { id: Number(row.id), title: row.title, year: row.year, poster: row.poster, overview: row.overview, rating: Number(row.rating) };
+  return { id: Number(row.id), title: row.title, year: row.year, poster: row.poster, overview: row.overview, rating: Number(row.rating), ratingSource: row.rating_source };
+}
+
+function isRatingSource(value: MovieInput["ratingSource"]): value is NonNullable<MovieInput["ratingSource"]> {
+  return value === "tmdb" || value === "imdb" || value === "legacy";
 }
 
 function unauthorized() {
