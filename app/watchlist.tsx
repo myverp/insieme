@@ -6,90 +6,18 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { WatchlistSearch } from "@/app/watchlist-search";
+import type { HistoryMovie, Movie, MovieDetails, Review, WatchlistSummary } from "@/app/watchlist-types";
 import { toast } from "sonner";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-type Movie = {
-  id: number;
-  title: string;
-  year: string;
-  poster: string;
-  overview: string;
-  rating: number;
-};
-
-type HistoryMovie = Movie & { watchedAt: string };
-
-type Review = {
-  id: string;
-  text: string;
-  rating: number | null;
-  own: boolean;
-  createdAt: string;
-  updatedAt: string;
-  profile: Profile | null;
-};
-
-type MovieDetails = {
-  id: number;
-  title: string;
-  tagline: string;
-  overview: string;
-  releaseDate: string;
-  runtime: number;
-  rating: number;
-  genres: string[];
-  countries: string[];
-  director: string;
-  cast: string[];
-  backdrops: string[];
-  trailer: { key: string; name: string } | null;
-};
-
 const STORAGE_KEY = "insieme-simple-watchlist-v1";
-const SEARCH_PLACEHOLDERS = [
-  "in the mood for a rom-com?",
-  "something nostalgic tonight?",
-  "find a film you will love",
-  "how about an old favorite?",
-  "a film for the two of us",
-  "we could use a comedy",
-  "what about a drama?",
-] as const;
-
-const GENRES = [
-  [28, "Action"], [12, "Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"],
-  [99, "Documentary"], [18, "Drama"], [10751, "Family"], [14, "Fantasy"], [36, "History"],
-  [27, "Horror"], [10402, "Music"], [9648, "Mystery"], [10749, "Romance"], [878, "Science fiction"],
-  [53, "Thriller"], [10752, "War"], [37, "Western"],
-] as const;
-
-type SearchFilters = {
-  genre: string;
-  director: string;
-  decade: string;
-  minRating: string;
-  sort: string;
-};
-
-const EMPTY_FILTERS: SearchFilters = { genre: "", director: "", decade: "", minRating: "", sort: "popularity.desc" };
-
-type WatchlistSummary = { id: string; name: string };
 
 export default function Watchlist({ watchlists, watchlistId, joined, profile }: { watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean; profile: Profile }) {
   const router = useRouter();
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [history, setHistory] = useState<HistoryMovie[]>([]);
-  const [results, setResults] = useState<Movie[]>([]);
-  const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [searchAttempted, setSearchAttempted] = useState(false);
-  const [searchError, setSearchError] = useState(false);
-  const [searchPlaceholder, setSearchPlaceholder] = useState<string>(SEARCH_PLACEHOLDERS[0]);
   const [ready, setReady] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [details, setDetails] = useState<MovieDetails | null>(null);
@@ -104,20 +32,13 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [members, setMembers] = useState<Profile[]>([profile]);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
   const [newListName, setNewListName] = useState("");
+  const [legacyMovies, setLegacyMovies] = useState<Movie[]>([]);
+  const [legacyImporting, setLegacyImporting] = useState(false);
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const shouldReduceMotion = useReducedMotion();
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const detailsDialog = useRef<HTMLDialogElement>(null);
   const managerDialog = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setSearchPlaceholder(SEARCH_PLACEHOLDERS[Math.floor(Math.random() * SEARCH_PLACEHOLDERS.length)]);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
 
   useEffect(() => {
     if (joined) toast.success("You joined the Watchlist.");
@@ -130,7 +51,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         const data = (await response.json()) as { profiles?: Profile[] };
         if (response.ok && !cancelled) setMembers(data.profiles ?? [profile]);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) toast.error("Watchlist members could not be refreshed.", { id: "member-refresh" });
+      });
     return () => { cancelled = true; };
   }, [profile, watchlistId]);
 
@@ -157,16 +80,15 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             const localMovies = JSON.parse(saved) as Movie[];
             if (Array.isArray(localMovies) && localMovies.length) {
               const sharedIds = new Set([...sharedState.movies, ...sharedState.history].map((movie) => movie.id));
-              await Promise.all(localMovies.filter((movie) => !sharedIds.has(movie.id)).map((movie) => saveMovie(movie)));
-              if (!cancelled) await refreshWatchlist();
+              const missingMovies = localMovies.filter((movie) => !sharedIds.has(movie.id));
+              if (!cancelled) setLegacyMovies(missingMovies);
             }
           } catch {
             // Ignore malformed legacy device data and continue with the shared list.
           }
         }
-        window.localStorage.removeItem(STORAGE_KEY);
       } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : "The shared watchlist is unavailable.");
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "The shared watchlist is unavailable.");
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -182,16 +104,18 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     const channel = supabase
       .channel(`insieme-watchlist-${watchlistId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "watchlist_movies", filter: `watchlist_id=eq.${watchlistId}` }, () => {
-        void refreshWatchlist().catch(() => undefined);
+        void refreshWatchlist().catch(() => {
+          toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" });
+        });
       })
       .subscribe();
 
-    const refreshOnFocus = () => void refreshWatchlist().catch(() => undefined);
-    const fallbackTimer = window.setInterval(refreshOnFocus, 30000);
+    const refreshOnFocus = () => void refreshWatchlist().catch(() => {
+      toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" });
+    });
     window.addEventListener("focus", refreshOnFocus);
 
     return () => {
-      window.clearInterval(fallbackTimer);
       window.removeEventListener("focus", refreshOnFocus);
       void supabase.removeChannel(channel);
     };
@@ -257,93 +181,30 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     }
   }
 
-  async function searchMovies(value: string, activeFilters = filters) {
-    const trimmedValue = value.trim();
-    const hasFilters = Boolean(
-      activeFilters.genre
-      || activeFilters.director.trim()
-      || activeFilters.decade
-      || activeFilters.minRating
-      || activeFilters.sort !== EMPTY_FILTERS.sort
-    );
-    if (!trimmedValue && !hasFilters) {
-      setResults([]);
-      setMessage("");
-      setSearchAttempted(false);
-      setSearchError(false);
-      return;
-    }
-
-    if (trimmedValue.length === 1) {
-      setResults([]);
-      setMessage("Type at least two characters.");
-      setSearchAttempted(false);
-      setSearchError(false);
-      return;
-    }
-
-    setSearchAttempted(true);
-    setSearchError(false);
-    setLoading(true);
-    setMessage("");
-    try {
-      const searchParams = new URLSearchParams({ query: trimmedValue, ...activeFilters });
-      const response = await fetch(`/api/movies?${searchParams}`);
-      const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string };
-      if (!response.ok) throw new Error(data.error ?? "Film search is unavailable.");
-      setResults(data.movies ?? []);
-      setMessage(data.movies?.length ? (data.message ?? "") : (data.message || "No films found."));
-    } catch (error) {
-      setResults([]);
-      setSearchError(true);
-      setMessage(error instanceof Error ? error.message : "Film search is unavailable.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleQueryChange(value: string) {
-    setQuery(value);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => void searchMovies(value), 350);
-  }
-
   function openManager() {
     if (!managerDialog.current?.open) managerDialog.current?.showModal();
   }
 
-  function clearSearch() {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    setQuery("");
-    setResults([]);
-    setMessage("");
-    setSearchAttempted(false);
-    setSearchError(false);
-    searchInput.current?.focus();
-  }
-
-  function updateFilter(name: keyof SearchFilters, value: string) {
-    setFilters((current) => ({ ...current, [name]: value }));
-  }
-
-  function resetFilters() {
-    setFilters(EMPTY_FILTERS);
-    if (query.trim().length >= 2) void searchMovies(query, EMPTY_FILTERS);
-    else {
-      setResults([]);
-      setMessage("");
-      setSearchAttempted(false);
-      setSearchError(false);
+  async function importLegacyMovies() {
+    if (!legacyMovies.length) return;
+    setLegacyImporting(true);
+    try {
+      await Promise.all(legacyMovies.map((movie) => saveMovie(movie)));
+      window.localStorage.removeItem(STORAGE_KEY);
+      setLegacyMovies([]);
+      await refreshWatchlist();
+      toast.success("Older local films were imported into this Watchlist.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The older local films could not be imported.");
+    } finally {
+      setLegacyImporting(false);
     }
   }
 
-  const activeFilterCount = [
-    filters.genre,
-    filters.director.trim(),
-    filters.decade,
-    filters.minRating,
-    filters.sort !== EMPTY_FILTERS.sort,
-  ].filter(Boolean).length;
+  function dismissLegacyMovies() {
+    window.localStorage.removeItem(STORAGE_KEY);
+    setLegacyMovies([]);
+  }
 
   async function addMovie(movie: Movie) {
     const alreadyAdded = watchlist.some((item) => item.id === movie.id) || history.some((item) => item.id === movie.id);
@@ -356,7 +217,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     } catch (error) {
       setWatchlist((current) => current.filter((item) => item.id !== movie.id));
       const errorMessage = error instanceof Error ? error.message : "The film could not be added.";
-      setMessage(errorMessage);
       toast.error(errorMessage);
     }
   }
@@ -369,9 +229,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       toast.success(`Marked “${movie.title}” as watched ♡`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "The film could not be marked as watched.";
-      setMessage(errorMessage);
       toast.error(errorMessage);
-      void refreshWatchlist().catch(() => undefined);
+      void refreshWatchlist().catch(() => toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" }));
     }
   }
 
@@ -397,9 +256,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     void removalRequest.catch((error: unknown) => {
       if (undoRequested) return;
       const errorMessage = error instanceof Error ? error.message : "The film could not be removed.";
-      setMessage(errorMessage);
       toast.error(errorMessage);
-      void refreshWatchlist().catch(() => undefined);
+      void refreshWatchlist().catch(() => toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" }));
     });
   }
 
@@ -407,7 +265,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     try {
       await removalRequest;
     } catch {
-      void refreshWatchlist().catch(() => undefined);
+      void refreshWatchlist().catch(() => toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" }));
       return;
     }
 
@@ -422,9 +280,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       toast.success(`“${movie.title}” is back on the list ♡`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "The film could not be restored.";
-      setMessage(errorMessage);
       toast.error(errorMessage);
-      void refreshWatchlist().catch(() => undefined);
+      void refreshWatchlist().catch(() => toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" }));
     }
   }
 
@@ -565,131 +422,30 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         <Link href="/profile" className="current-profile header-identity"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
       </header>
 
-      <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
-        <h2 id="add-film-heading">Add a film</h2>
-        <label className="sr-only" htmlFor="film-search">Search by title</label>
-        <form className="search-row" onSubmit={(event) => { event.preventDefault(); void searchMovies(query); }}>
-          <div className="search-input-wrap">
-            <input
-              ref={searchInput}
-              id="film-search"
-              type="search"
-              value={query}
-              onChange={(event) => handleQueryChange(event.target.value)}
-              placeholder={searchPlaceholder}
-              autoComplete="off"
-              enterKeyHint="search"
-            />
-            {query ? <button className="clear-search" type="button" onClick={clearSearch} aria-label="Clear search">×</button> : null}
+      {legacyMovies.length ? (
+        <section className="legacy-import" aria-labelledby="legacy-import-title">
+          <div>
+            <h2 id="legacy-import-title">Older local films found</h2>
+            <p>
+              Import {legacyMovies.length} {legacyMovies.length === 1 ? "film" : "films"} saved on this browser into {watchlists.find((item) => item.id === watchlistId)?.name ?? "this Watchlist"}?
+            </p>
           </div>
-          <button type="submit" disabled={loading}>
-            {loading ? "Searching…" : "Search"}
-          </button>
-        </form>
+          <div className="legacy-import-actions">
+            <button type="button" onClick={() => void importLegacyMovies()} disabled={legacyImporting}>
+              {legacyImporting ? "Importing…" : "Import films"}
+            </button>
+            <button type="button" className="legacy-dismiss" onClick={dismissLegacyMovies} disabled={legacyImporting}>Dismiss</button>
+          </div>
+        </section>
+      ) : null}
 
-        <details className="advanced-search">
-          <summary>
-            <span>Advanced search</span>
-            {activeFilterCount ? <span className="filter-count">{activeFilterCount}</span> : null}
-          </summary>
-          <div className="advanced-fields">
-            <label>
-              <span>Genre</span>
-              <select value={filters.genre} onChange={(event) => updateFilter("genre", event.target.value)}>
-                <option value="">Any genre</option>
-                {GENRES.map(([id, name]) => <option value={id} key={id}>{name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Director</span>
-              <input type="text" value={filters.director} onChange={(event) => updateFilter("director", event.target.value)} placeholder="For example: Sofia Coppola" />
-            </label>
-            <label>
-              <span>Decade</span>
-              <select value={filters.decade} onChange={(event) => updateFilter("decade", event.target.value)}>
-                <option value="">Any decade</option>
-                {[2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950, 1940, 1930, 1920].map((decade) => <option value={decade} key={decade}>{decade}s</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Minimum rating</span>
-              <select value={filters.minRating} onChange={(event) => updateFilter("minRating", event.target.value)}>
-                <option value="">Any rating</option>
-                <option value="6">6+ on IMDb</option>
-                <option value="7">7+ on IMDb</option>
-                <option value="8">8+ on IMDb</option>
-              </select>
-            </label>
-            <label>
-              <span>Sort by</span>
-              <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}>
-                <option value="popularity.desc">Most popular</option>
-                <option value="imdb_rating.desc">Highest rated</option>
-                <option value="primary_release_date.desc">Newest first</option>
-                <option value="primary_release_date.asc">Oldest first</option>
-              </select>
-            </label>
-          </div>
-          <div className="advanced-actions">
-            <button type="button" className="filter-search-button" onClick={() => void searchMovies(query)} disabled={loading}>Apply filters</button>
-            {activeFilterCount ? <button type="button" className="reset-filters" onClick={resetFilters}>Reset</button> : null}
-          </div>
-        </details>
-
-        {message && !loading ? <p className="status" role="status">{message}</p> : null}
-
-        {loading || results.length || searchAttempted ? (
-          <div className="results-block">
-            <div className="results-heading"><h3>Search results</h3>{results.length ? <span>{results.length} found</span> : null}</div>
-            {loading ? <FilmGridSkeleton count={5} compact /> : results.length ? (
-              <ul className="search-results" aria-label="Film search results">
-                <AnimatePresence initial={false} mode="popLayout">
-                  {results.map((movie) => {
-                    const added = watchlist.some((item) => item.id === movie.id);
-                    const watched = history.some((item) => item.id === movie.id);
-                    return (
-                      <motion.li
-                        className="group"
-                        key={movie.id}
-                        layout={!shouldReduceMotion}
-                        initial={shouldReduceMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={shouldReduceMotion ? undefined : { opacity: 0, y: -8, scale: 0.98 }}
-                        transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
-                      >
-                        <button
-                          className="result-details-trigger"
-                          type="button"
-                          onClick={() => void openDetails(movie)}
-                          aria-haspopup="dialog"
-                          aria-label={`View details for ${movie.title}`}
-                        >
-                          <Poster movie={movie} size="card" />
-                          <span className="result-info">
-                            <strong title={movie.title}>{movie.title}</strong>
-                            <span>{movie.year || "Year unknown"} · IMDb {formatRating(movie.rating)}</span>
-                          </span>
-                        </button>
-                        <div className="result-actions">
-                          <button type="button" onClick={() => void addMovie(movie)} disabled={added || watched}>
-                            {watched ? "Watched" : added ? "Added" : "Add"}
-                          </button>
-                        </div>
-                      </motion.li>
-                    );
-                  })}
-                </AnimatePresence>
-              </ul>
-            ) : (
-              <div className={`search-empty${searchError ? " search-empty-error" : ""}`} role={searchError ? "alert" : "status"}>
-                <span className="empty-state-icon" aria-hidden="true">{searchError ? "!" : "⌕"}</span>
-                <strong>{searchError ? "Search unavailable" : "No films found"}</strong>
-                <span>{searchError ? message : "Try a different title or loosen your filters."}</span>
-              </div>
-            )}
-          </div>
-        ) : null}
-      </section>
+      <WatchlistSearch
+        watchlist={watchlist}
+        history={history}
+        inputRef={searchInput}
+        onAdd={addMovie}
+        onOpenDetails={openDetails}
+      />
 
       <section className="list-section" aria-labelledby="watchlist-heading">
         <div className="list-heading">
@@ -714,17 +470,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               <FilmGridSkeleton count={4} />
             ) : watchlist.length ? (
               <ul className="film-grid">
-                <AnimatePresence initial={false} mode="popLayout">
-                  {watchlist.map((movie) => (
-                    <motion.li
+                {watchlist.map((movie) => (
+                    <li
                       className="group"
                       key={movie.id}
-                      layout={!shouldReduceMotion}
-                      initial={shouldReduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={shouldReduceMotion ? undefined : { opacity: 0, y: 18, scale: 0.92 }}
-                      whileHover={shouldReduceMotion ? undefined : { y: -4 }}
-                      transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
                     >
                       <button
                         className="film-details-trigger"
@@ -745,7 +494,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                           type="button"
                           onClick={() => void markWatched(movie)}
                         >
-                          Watched
+                          Mark watched
                         </button>
                         <button
                           className="remove-button"
@@ -757,9 +506,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                           <TrashIcon />
                         </button>
                       </div>
-                    </motion.li>
+                    </li>
                   ))}
-                </AnimatePresence>
               </ul>
             ) : (
               <div className="empty-state">
@@ -794,15 +542,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
           <div className="collapsible-inner">
             {history.length ? (
               <ul className="film-grid history-grid">
-                <AnimatePresence initial={false} mode="popLayout">
-                  {history.map((movie) => (
-                    <motion.li
+                {history.map((movie) => (
+                    <li
                       className="group history-card"
                       key={movie.id}
-                      layout={!shouldReduceMotion}
-                      initial={shouldReduceMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
                     >
                       <button
                         className="film-details-trigger"
@@ -817,9 +560,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                           <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
                         </span>
                       </button>
-                    </motion.li>
+                    </li>
                   ))}
-                </AnimatePresence>
               </ul>
             ) : (
               <div className="empty-state">
@@ -952,6 +694,31 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               {details?.tagline ? <p className="tagline">{details.tagline}</p> : null}
             </header>
 
+            {watchlist.some((movie) => movie.id === selectedMovie.id) ? (
+              <div className="details-actions">
+                <button
+                  className="details-watched-button"
+                  type="button"
+                  onClick={() => {
+                    detailsDialog.current?.close();
+                    void markWatched(selectedMovie);
+                  }}
+                >
+                  Mark as watched
+                </button>
+                <button
+                  className="details-remove-button"
+                  type="button"
+                  onClick={() => {
+                    detailsDialog.current?.close();
+                    removeMovie(selectedMovie);
+                  }}
+                >
+                  Remove from Watchlist
+                </button>
+              </div>
+            ) : null}
+
             {detailsLoading ? <div className="details-state" role="status"><span className="details-spinner" aria-hidden="true" />Loading film details…</div> : null}
             {detailsError ? <p className="details-state details-error" role="alert">{detailsError}</p> : null}
 
@@ -1012,21 +779,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                   <p className="trailer-unavailable">No trailer is available for this film.</p>
                 )}
               </>
-            ) : null}
-
-            {watchlist.some((movie) => movie.id === selectedMovie.id) ? (
-              <div className="details-actions">
-                <button
-                  className="details-remove-button"
-                  type="button"
-                  onClick={() => {
-                    detailsDialog.current?.close();
-                    removeMovie(selectedMovie);
-                  }}
-                >
-                  Remove from Watchlist
-                </button>
-              </div>
             ) : null}
 
             {history.some((movie) => movie.id === selectedMovie.id) ? (
@@ -1272,11 +1024,12 @@ function Poster({ movie, size }: { movie: Movie; size: "card" }) {
 
   return (
     <Image
-      className={`poster poster-${size} transition-transform duration-500 group-hover:scale-[1.015]`}
+      className={`poster poster-${size}`}
       src={movie.poster}
       alt={`${movie.title} poster`}
       width={dimensions.width}
       height={dimensions.height}
+      sizes="(max-width: 430px) 104px, (max-width: 700px) 50vw, (max-width: 950px) 33vw, 25vw"
     />
   );
 }

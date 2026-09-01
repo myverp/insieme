@@ -107,3 +107,25 @@ test("skips an unavailable rating and continues collecting results", async () =>
   assert.deepEqual(results.map(({ movie }) => movie.id), [1, 3]);
   assert.deepEqual(errors, [2]);
 });
+
+test("stops IMDb enrichment once a non-ranking search has enough matches", async () => {
+  const ratedIds: number[] = [];
+  const results = await collectMovieResults({
+    loadPage: async () => ({
+      movies: Array.from({ length: 20 }, (_, index) => ({ id: index + 1, rating: 8 })),
+      hasMore: false,
+    }),
+    rateMovie: async (movie) => {
+      ratedIds.push(movie.id);
+      return movie.rating;
+    },
+    getMovieId: (movie) => movie.id,
+    minRating: 8,
+    compare: (first, second) => first.movie.id - second.movie.id,
+    limit: 5,
+    ratingConcurrency: 1,
+  });
+
+  assert.equal(results.length, 5);
+  assert.deepEqual(ratedIds, [1, 2, 3, 4, 5]);
+});

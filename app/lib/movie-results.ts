@@ -15,6 +15,7 @@ type CollectMovieResultsOptions<T> = {
   limit?: number;
   maxPages?: number;
   scanAllPages?: boolean;
+  ratingConcurrency?: number;
 };
 
 export async function collectMovieResults<T>({
@@ -27,6 +28,7 @@ export async function collectMovieResults<T>({
   limit = 20,
   maxPages = 5,
   scanAllPages = false,
+  ratingConcurrency = 6,
 }: CollectMovieResultsOptions<T>) {
   const results: RatedMovie<T>[] = [];
   const seenMovieIds = new Set<number>();
@@ -41,24 +43,28 @@ export async function collectMovieResults<T>({
       seenMovieIds.add(id);
       return true;
     });
-    const ratedMovies: RatedMovie<T>[] = [];
+    const qualifyingMovies: RatedMovie<T>[] = [];
     let nextMovieIndex = 0;
     const rateNextMovie = async () => {
-      while (nextMovieIndex < unseenMovies.length) {
+      while (
+        nextMovieIndex < unseenMovies.length
+        && (scanAllPages || results.length + qualifyingMovies.length < limit)
+      ) {
         const movie = unseenMovies[nextMovieIndex];
         nextMovieIndex += 1;
         try {
-          ratedMovies.push({ movie, rating: await rateMovie(movie) });
+          const ratedMovie = { movie, rating: await rateMovie(movie) };
+          if (!minRating || ratedMovie.rating >= minRating) qualifyingMovies.push(ratedMovie);
         } catch (error) {
           onRateError?.(error, movie);
         }
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(6, unseenMovies.length) }, () => rateNextMovie()),
+      Array.from({ length: Math.min(ratingConcurrency, unseenMovies.length) }, () => rateNextMovie()),
     );
 
-    results.push(...ratedMovies.filter(({ rating }) => !minRating || rating >= minRating));
+    results.push(...qualifyingMovies);
     hasMore = page.hasMore;
     pageNumber += 1;
   }
