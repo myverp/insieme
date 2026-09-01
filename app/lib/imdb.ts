@@ -1,4 +1,3 @@
-import { unstable_cache } from "next/cache";
 import { parseImdbRating, type OmdbMovie } from "@/app/lib/imdb-rating";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 
@@ -48,7 +47,7 @@ export async function getImdbRating({ imdbId, tmdbId, title, year }: ImdbLookup)
     const lookup = resolvedImdbId
       ? { imdbId: resolvedImdbId, title: "", year: "" }
       : { imdbId: "", title: title!, year: year ?? "" };
-    const data = await getCachedOmdbMovie(apiKey, lookup.imdbId, lookup.title, lookup.year);
+    const data = await requestOmdbMovie(apiKey, lookup.imdbId, lookup.title, lookup.year);
     const rating = parseImdbRating(data);
     await cacheRating(tmdbId, resolvedImdbId || null, rating || null, rating ? "ok" : "unavailable");
     return rating;
@@ -81,24 +80,20 @@ function isFresh(fetchedAt: string) {
   return Number.isFinite(fetchedAtMs) && Date.now() - fetchedAtMs < RATING_CACHE_MAX_AGE_MS;
 }
 
-const getCachedOmdbMovie = unstable_cache(
-  async (apiKey: string, imdbId: string, title: string, year: string) => {
-    const params = new URLSearchParams({ apikey: apiKey, type: "movie" });
-    if (imdbId) params.set("i", imdbId);
-    else {
-      params.set("t", title);
-      if (year) params.set("y", year);
-    }
+async function requestOmdbMovie(apiKey: string, imdbId: string, title: string, year: string) {
+  const params = new URLSearchParams({ apikey: apiKey, type: "movie" });
+  if (imdbId) params.set("i", imdbId);
+  else {
+    params.set("t", title);
+    if (year) params.set("y", year);
+  }
 
-    const response = await fetch(`https://www.omdbapi.com/?${params}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`OMDb request failed with status ${response.status}.`);
-    const data = (await response.json()) as OmdbMovie;
-    parseImdbRating(data);
-    return data;
-  },
-  ["omdb-movie-v2"],
-  { revalidate: 86400 },
-);
+  const response = await fetch(`https://www.omdbapi.com/?${params}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`OMDb request failed with status ${response.status}.`);
+  const data = (await response.json()) as OmdbMovie;
+  parseImdbRating(data);
+  return data;
+}
 
 async function getImdbId(tmdbId: number) {
   const token = process.env.TMDB_READ_TOKEN;
