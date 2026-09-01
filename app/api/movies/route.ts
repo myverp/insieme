@@ -123,6 +123,7 @@ export async function GET(request: NextRequest) {
       return { movies: applyLocalFilters(discovered.results ?? []), hasMore: page < (discovered.total_pages ?? 1) };
     };
 
+    let ratingFailures = 0;
     const filteredMovies = await collectMovieResults({
       loadPage,
       rateMovie: (movie) => getImdbRating({
@@ -132,6 +133,9 @@ export async function GET(request: NextRequest) {
         required: Boolean(minRating || sort === "imdb_rating.desc"),
       }),
       getMovieId: (movie) => movie.id,
+      onRateError: () => {
+        ratingFailures += 1;
+      },
       minRating,
       compare: (first, second) => compareMovies(first, second, sort),
       maxPages: minRating >= 8 ? 10 : 5,
@@ -140,7 +144,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       movies: filteredMovies.map(({ movie, rating }) => toMovie(movie, rating)),
-      message: resolvedDirector ? `Films directed by ${resolvedDirector}.` : "",
+      message: resolvedDirector
+        ? `Films directed by ${resolvedDirector}.`
+        : ratingFailures && filteredMovies.length
+          ? "Some films could not be rated by IMDb and were skipped."
+          : ratingFailures
+            ? "IMDb ratings are temporarily unavailable. Try again shortly."
+            : "",
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "TMDb is temporarily unavailable." }, { status: 502 });

@@ -86,3 +86,24 @@ test("collection stops at the page cap when too few films qualify", async () => 
   assert.deepEqual(loadedPages, [1, 2, 3]);
   assert.equal(results.length, 3);
 });
+
+test("skips an unavailable rating and continues collecting results", async () => {
+  const errors: number[] = [];
+  const results = await collectMovieResults({
+    loadPage: async () => ({
+      movies: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      hasMore: false,
+    }),
+    rateMovie: async (movie) => {
+      if (movie.id === 2) throw new Error("IMDb lookup failed");
+      return 8;
+    },
+    onRateError: (_error, movie) => errors.push(movie.id),
+    getMovieId: (movie) => movie.id,
+    minRating: 8,
+    compare: (first, second) => first.movie.id - second.movie.id,
+  });
+
+  assert.deepEqual(results.map(({ movie }) => movie.id), [1, 3]);
+  assert.deepEqual(errors, [2]);
+});

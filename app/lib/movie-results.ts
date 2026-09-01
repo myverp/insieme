@@ -8,6 +8,7 @@ type MoviePage<T> = {
 type CollectMovieResultsOptions<T> = {
   loadPage: (page: number) => Promise<MoviePage<T>>;
   rateMovie: (movie: T) => Promise<number>;
+  onRateError?: (error: unknown, movie: T) => void;
   getMovieId: (movie: T) => number;
   minRating: number;
   compare: (first: RatedMovie<T>, second: RatedMovie<T>) => number;
@@ -19,6 +20,7 @@ type CollectMovieResultsOptions<T> = {
 export async function collectMovieResults<T>({
   loadPage,
   rateMovie,
+  onRateError,
   getMovieId,
   minRating,
   compare,
@@ -39,10 +41,22 @@ export async function collectMovieResults<T>({
       seenMovieIds.add(id);
       return true;
     });
-    const ratedMovies = await Promise.all(unseenMovies.map(async (movie) => ({
-      movie,
-      rating: await rateMovie(movie),
-    })));
+    const ratedMovies: RatedMovie<T>[] = [];
+    let nextMovieIndex = 0;
+    const rateNextMovie = async () => {
+      while (nextMovieIndex < unseenMovies.length) {
+        const movie = unseenMovies[nextMovieIndex];
+        nextMovieIndex += 1;
+        try {
+          ratedMovies.push({ movie, rating: await rateMovie(movie) });
+        } catch (error) {
+          onRateError?.(error, movie);
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(6, unseenMovies.length) }, () => rateNextMovie()),
+    );
 
     results.push(...ratedMovies.filter(({ rating }) => !minRating || rating >= minRating));
     hasMore = page.hasMore;
