@@ -58,6 +58,9 @@ button:disabled { cursor: default; opacity: .55; }
 .search-panel > label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .search-row { display: flex; gap: 10px; }
 .search-row input { min-width: 0; flex: 1 0 auto; height: 48px; padding: 0 16px; border: 1px solid #aaa99e; border-radius: 11px; background: #fff; color: var(--text); transition: border-color .15s, box-shadow .15s; }
+.search-row input[type="search"]::-webkit-search-cancel-button,
+.search-row input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.search-row input[type="search"]::-ms-clear { display: none; }
 .search-row input:hover { border-color: #7d8b82; }
 .search-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47, 98, 72, .13); outline: 0; }
 .search-row button, .search-results button { min-height: 44px; padding: 0 20px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent); color: #fff; font-weight: 750; box-shadow: 0 4px 12px rgba(35, 77, 56, .18); transition: background .15s, border-color .15s, transform .15s, box-shadow .15s; }
@@ -166,8 +169,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 .remove-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; animation: none; transform: none; }
 
 @media (hover: hover) and (pointer: fine) {
-  .film-grid .remove-button { opacity: 0; pointer-events: none; transform: translateX(4px); }
-  .film-grid li:hover .remove-button, .film-grid li:focus-within .remove-button { opacity: 1; pointer-events: auto; transform: none; }
+  .film-grid .film-actions { max-height: 0; margin-top: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; border-top-color: transparent; opacity: 0; pointer-events: none; transform: translateY(6px); transition: max-height .2s ease, margin-top .2s ease, padding .2s ease, border-color .2s ease, opacity .2s ease, transform .2s ease; }
+  .film-grid li:hover .film-actions, .film-grid li:focus-within .film-actions { max-height: 72px; margin-top: 7px; padding-top: 10px; padding-bottom: 12px; border-top-color: rgba(221, 215, 202, .72); opacity: 1; pointer-events: auto; transform: none; }
   .remove-button:hover { border-color: #e3bdb5; background: rgba(251, 239, 237, .72); transform: rotate(-3deg); }
 }
 

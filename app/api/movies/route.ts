@@ -20,6 +20,10 @@ type TmdbCreditsResponse = { crew?: Array<TmdbMovie & { job?: string }>; status_
 
 const allowedSorts = new Set(["popularity.desc", "imdb_rating.desc", "primary_release_date.desc", "primary_release_date.asc"]);
 
+// High-rating searches enrich several TMDb pages with IMDb data. Give that
+// bounded scan enough time to finish instead of failing at Vercel's default.
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const query = params.get("query")?.trim() ?? "";
