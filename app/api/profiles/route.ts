@@ -11,11 +11,16 @@ export async function GET(request: NextRequest) {
   await ensureProfile(supabase, userId);
   const watchlists = await ensureWatchlists(supabase, userId);
   const watchlist = selectWatchlist(watchlists, request.cookies.get("insieme-watchlist")?.value);
-  const { data: memberships, error: memberError } = await supabase.from("watchlist_members").select("user_id").eq("watchlist_id", watchlist.id);
+  const { data: memberships, error: memberError } = await supabase.from("watchlist_members").select("user_id,role").eq("watchlist_id", watchlist.id);
   if (memberError) return unavailable();
   const { data: profiles, error } = await supabase.from("profiles").select("user_id,display_name").in("user_id", memberships.map((member) => member.user_id));
   if (error) return unavailable();
-  return NextResponse.json({ profiles: profiles.map(toProfile) }, { headers: { "Cache-Control": "no-store" } });
+  const profilesById = new Map(profiles.map((row) => [row.user_id, toProfile(row)]));
+  const members = memberships.flatMap((membership) => {
+    const profile = profilesById.get(membership.user_id);
+    return profile ? [{ profile, role: membership.role }] : [];
+  });
+  return NextResponse.json({ members }, { headers: { "Cache-Control": "no-store" } });
 }
 
 function unavailable() { return NextResponse.json({ error: "Profiles are temporarily unavailable." }, { status: 502 }); }

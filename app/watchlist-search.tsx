@@ -45,6 +45,7 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
   const [searchAttempted, setSearchAttempted] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const searchRequest = useRef<AbortController | null>(null);
+  const filterDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => () => searchRequest.current?.abort(), []);
 
@@ -130,6 +131,20 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
     filters.sort !== EMPTY_FILTERS.sort,
   ].filter(Boolean).length;
 
+  const activeFilterChips = [
+    filters.genre ? { name: "genre" as const, label: GENRES.find(([id]) => String(id) === filters.genre)?.[1] ?? "Genre" } : null,
+    filters.director.trim() ? { name: "director" as const, label: `Director: ${filters.director.trim()}` } : null,
+    filters.decade ? { name: "decade" as const, label: `${filters.decade}s` } : null,
+    filters.minRating ? { name: "minRating" as const, label: `${filters.minRating}+ TMDb` } : null,
+    filters.sort !== EMPTY_FILTERS.sort ? { name: "sort" as const, label: sortLabel(filters.sort) } : null,
+  ].filter((item): item is { name: keyof SearchFilters; label: string } => Boolean(item));
+
+  function removeFilter(name: keyof SearchFilters) {
+    const nextFilters = { ...filters, [name]: name === "sort" ? EMPTY_FILTERS.sort : "" };
+    setFilters(nextFilters);
+    void searchMovies(nextFilters);
+  }
+
   return (
     <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
       <h2 id="add-film-heading">Add a film</h2>
@@ -151,54 +166,59 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
         <button type="submit" disabled={loading}>{loading ? "Searching…" : "Search"}</button>
       </form>
 
-      <details className="advanced-search">
+      <details className="advanced-search desktop-advanced-search">
         <summary>
           <span>Advanced search</span>
           {activeFilterCount ? <span className="filter-count">{activeFilterCount}</span> : null}
         </summary>
-        <div className="advanced-fields">
-          <label>
-            <span>Genre</span>
-            <select value={filters.genre} onChange={(event) => updateFilter("genre", event.target.value)}>
-              <option value="">Any genre</option>
-              {GENRES.map(([id, name]) => <option value={id} key={id}>{name}</option>)}
-            </select>
-          </label>
-          <label>
-            <span>Director</span>
-            <input type="text" value={filters.director} onChange={(event) => updateFilter("director", event.target.value)} placeholder="For example: Sofia Coppola" />
-          </label>
-          <label>
-            <span>Decade</span>
-            <select value={filters.decade} onChange={(event) => updateFilter("decade", event.target.value)}>
-              <option value="">Any decade</option>
-              {[2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950, 1940, 1930, 1920].map((decade) => <option value={decade} key={decade}>{decade}s</option>)}
-            </select>
-          </label>
-          <label>
-            <span>Minimum rating</span>
-            <select value={filters.minRating} onChange={(event) => updateFilter("minRating", event.target.value)}>
-              <option value="">Any rating</option>
-              <option value="6">6+ on TMDb</option>
-              <option value="7">7+ on TMDb</option>
-              <option value="8">8+ on TMDb</option>
-            </select>
-          </label>
-          <label>
-            <span>Sort by</span>
-            <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}>
-              <option value="popularity.desc">Most popular</option>
-              <option value="vote_average.desc">Highest rated</option>
-              <option value="primary_release_date.desc">Newest first</option>
-              <option value="primary_release_date.asc">Oldest first</option>
-            </select>
-          </label>
-        </div>
+        <FilterFields filters={filters} updateFilter={updateFilter} />
         <div className="advanced-actions">
           <button type="button" className="filter-search-button" onClick={() => void searchMovies()} disabled={loading}>Apply filters</button>
           {activeFilterCount ? <button type="button" className="reset-filters" onClick={resetFilters}>Reset</button> : null}
         </div>
       </details>
+
+      <button className="mobile-filter-button" type="button" onClick={() => filterDialog.current?.showModal()}>
+        <FilterIcon />
+        <span>Filters</span>
+        {activeFilterCount ? <span className="filter-count">{activeFilterCount}</span> : null}
+      </button>
+
+      <dialog className="filter-dialog" ref={filterDialog} aria-labelledby="filter-dialog-title">
+        <button className="dialog-close" type="button" onClick={() => filterDialog.current?.close()} aria-label="Close filters">×</button>
+        <div className="filter-dialog-content">
+          <header className="details-heading">
+            <p>Discovery</p>
+            <h2 id="filter-dialog-title">Filter films</h2>
+            <p className="tagline">Narrow the results without losing your place.</p>
+          </header>
+          <FilterFields filters={filters} updateFilter={updateFilter} />
+          <div className="advanced-actions">
+            <button
+              type="button"
+              className="filter-search-button"
+              disabled={loading}
+              onClick={() => {
+                filterDialog.current?.close();
+                void searchMovies();
+              }}
+            >
+              Apply filters
+            </button>
+            {activeFilterCount ? <button type="button" className="reset-filters" onClick={resetFilters}>Reset</button> : null}
+          </div>
+        </div>
+      </dialog>
+
+      {activeFilterChips.length ? (
+        <div className="active-filter-chips" aria-label="Active filters">
+          {activeFilterChips.map((filter) => (
+            <button type="button" key={filter.name} onClick={() => removeFilter(filter.name)} aria-label={`Remove ${filter.label} filter`}>
+              {filter.label}<span aria-hidden="true">×</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {message && !loading ? <p className="status" role="status">{message}</p> : null}
       {loading || results.length || searchAttempted ? (
@@ -238,6 +258,60 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
       ) : null}
     </section>
   );
+}
+
+function FilterFields({ filters, updateFilter }: { filters: SearchFilters; updateFilter: (name: keyof SearchFilters, value: string) => void }) {
+  return (
+    <div className="advanced-fields">
+      <label>
+        <span>Genre</span>
+        <select value={filters.genre} onChange={(event) => updateFilter("genre", event.target.value)}>
+          <option value="">Any genre</option>
+          {GENRES.map(([id, name]) => <option value={id} key={id}>{name}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>Director</span>
+        <input type="text" value={filters.director} onChange={(event) => updateFilter("director", event.target.value)} placeholder="For example: Sofia Coppola" />
+      </label>
+      <label>
+        <span>Decade</span>
+        <select value={filters.decade} onChange={(event) => updateFilter("decade", event.target.value)}>
+          <option value="">Any decade</option>
+          {[2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950, 1940, 1930, 1920].map((decade) => <option value={decade} key={decade}>{decade}s</option>)}
+        </select>
+      </label>
+      <label>
+        <span>Minimum rating</span>
+        <select value={filters.minRating} onChange={(event) => updateFilter("minRating", event.target.value)}>
+          <option value="">Any rating</option>
+          <option value="6">6+ on TMDb</option>
+          <option value="7">7+ on TMDb</option>
+          <option value="8">8+ on TMDb</option>
+        </select>
+      </label>
+      <label>
+        <span>Sort by</span>
+        <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}>
+          <option value="popularity.desc">Most popular</option>
+          <option value="vote_average.desc">Highest rated</option>
+          <option value="primary_release_date.desc">Newest first</option>
+          <option value="primary_release_date.asc">Oldest first</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function sortLabel(sort: string) {
+  if (sort === "vote_average.desc") return "Highest rated";
+  if (sort === "primary_release_date.desc") return "Newest first";
+  if (sort === "primary_release_date.asc") return "Oldest first";
+  return "Most popular";
+}
+
+function FilterIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>;
 }
 
 function SearchPoster({ movie }: { movie: Movie }) {

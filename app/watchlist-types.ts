@@ -39,4 +39,11 @@ export type MovieDetails = {
   trailer: { key: string; name: string } | null;
 };
 
-export type WatchlistSummary = { id: string; name: string };
+export type WatchlistRole = "owner" | "member";
+
+export type WatchlistSummary = { id: string; name: string; role: WatchlistRole };
+
+export type WatchlistMember = {
+  profile: Profile;
+  role: WatchlistRole;
+};

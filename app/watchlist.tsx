@@ -7,7 +7,7 @@ import { createClient } from "@/app/lib/supabase/client";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
 import { WatchlistSearch } from "@/app/watchlist-search";
-import type { HistoryMovie, Movie, MovieDetails, Review, WatchlistSummary } from "@/app/watchlist-types";
+import type { HistoryMovie, Movie, MovieDetails, Review, WatchlistMember, WatchlistSummary } from "@/app/watchlist-types";
 import { toast } from "sonner";
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -16,6 +16,7 @@ const STORAGE_KEY = "insieme-simple-watchlist-v1";
 
 export default function Watchlist({ watchlists, watchlistId, joined, profile }: { watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean; profile: Profile }) {
   const router = useRouter();
+  const currentWatchlist = watchlists.find((item) => item.id === watchlistId) ?? watchlists[0];
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [history, setHistory] = useState<HistoryMovie[]>([]);
   const [ready, setReady] = useState(false);
@@ -29,9 +30,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [reviewText, setReviewText] = useState("");
   const [reviewRating, setReviewRating] = useState<number | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
-  const [members, setMembers] = useState<Profile[]>([profile]);
-  const [listAction, setListAction] = useState<"switch" | "create" | "invite" | null>(null);
+  const [members, setMembers] = useState<WatchlistMember[]>([{ profile, role: currentWatchlist?.role ?? "owner" }]);
+  const [listAction, setListAction] = useState<"switch" | "create" | "invite" | "rename" | "lifecycle" | null>(null);
   const [newListName, setNewListName] = useState("");
+  const [renameListName, setRenameListName] = useState(currentWatchlist?.name ?? "");
   const [legacyMovies, setLegacyMovies] = useState<Movie[]>([]);
   const [legacyImporting, setLegacyImporting] = useState(false);
   const [watchlistOpen, setWatchlistOpen] = useState(true);
@@ -48,14 +50,14 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     let cancelled = false;
     void fetch("/api/profiles", { cache: "no-store" })
       .then(async (response) => {
-        const data = (await response.json()) as { profiles?: Profile[] };
-        if (response.ok && !cancelled) setMembers(data.profiles ?? [profile]);
+        const data = (await response.json()) as { members?: WatchlistMember[] };
+        if (response.ok && !cancelled) setMembers(data.members ?? [{ profile, role: currentWatchlist?.role ?? "owner" }]);
       })
       .catch(() => {
         if (!cancelled) toast.error("Watchlist members could not be refreshed.", { id: "member-refresh" });
       });
     return () => { cancelled = true; };
-  }, [profile, watchlistId]);
+  }, [currentWatchlist?.role, profile, watchlistId]);
 
   const refreshWatchlist = useCallback(async () => {
     const response = await fetch(`/api/watchlist?selected=${encodeURIComponent(watchlistId)}`, { cache: "no-store" });
@@ -184,7 +186,59 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   }
 
   function openManager() {
+    setRenameListName(currentWatchlist?.name ?? "");
     if (!managerDialog.current?.open) managerDialog.current?.showModal();
+  }
+
+  async function renameList(name: string) {
+    const trimmedName = name.trim();
+    if (!currentWatchlist || currentWatchlist.role !== "owner" || !trimmedName || trimmedName === currentWatchlist.name) return;
+    setListAction("rename");
+    try {
+      const response = await fetch("/api/watchlists", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: currentWatchlist.id, name: trimmedName }),
+      });
+      const data = (await response.json()) as { name?: string; error?: string };
+      if (!response.ok || !data.name) throw new Error(data.error ?? "The Watchlist could not be renamed.");
+      setRenameListName(data.name);
+      toast.success("Watchlist renamed.");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The Watchlist could not be renamed.");
+    } finally {
+      setListAction(null);
+    }
+  }
+
+  async function endMembership() {
+    if (!currentWatchlist) return;
+    const deleting = currentWatchlist.role === "owner";
+    const confirmed = window.confirm(
+      deleting
+        ? `Delete “${currentWatchlist.name}” and all of its films, history, invitations, and reviews?`
+        : `Leave “${currentWatchlist.name}”? You will lose access unless you are invited again.`,
+    );
+    if (!confirmed) return;
+
+    setListAction("lifecycle");
+    try {
+      const response = await fetch("/api/watchlists", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: currentWatchlist.id }),
+      });
+      const data = (await response.json()) as { action?: "deleted" | "left"; error?: string };
+      if (!response.ok || !data.action) throw new Error(data.error ?? "The Watchlist could not be updated.");
+      managerDialog.current?.close();
+      toast.success(data.action === "deleted" ? "Watchlist deleted." : "You left the Watchlist.");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The Watchlist could not be updated.");
+    } finally {
+      setListAction(null);
+    }
   }
 
   async function importLegacyMovies() {
@@ -417,7 +471,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
             <button className="manage-watchlists-button" type="button" onClick={openManager} disabled={listAction !== null}>
-              Manage Watchlists
+              <SettingsIcon />
+              <span className="manage-label-wide">Manage Watchlists</span>
+              <span className="manage-label-short">Manage</span>
             </button>
           </div>
         </div>
@@ -617,6 +673,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                   <div>
                     <strong>{item.name}</strong>
                     {item.id === watchlistId ? <span className="manager-current-label">Current</span> : null}
+                    <span className="manager-role-label">{item.role === "owner" ? "Owner" : "Member"}</span>
                   </div>
                   {item.id !== watchlistId ? (
                     <button type="button" onClick={() => void selectList(item.id)} disabled={listAction !== null}>Use list</button>
@@ -638,12 +695,54 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             </div>
             <ul className="manager-members" aria-label="Watchlist members">
               {members.map((member) => (
-                <li className="manager-member" key={member.userId}>
-                  <ProfileAvatar displayName={member.displayName} small />
-                  <span>{member.displayName}</span>
+                <li className="manager-member" key={member.profile.userId}>
+                  <ProfileAvatar displayName={member.profile.displayName} small />
+                  <span>{member.profile.displayName}</span>
+                  {member.role === "owner" ? <span className="manager-member-role">Owner</span> : null}
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section className="manager-section" aria-labelledby="watchlist-settings-title">
+            <div className="manager-section-heading">
+              <div>
+                <h3 id="watchlist-settings-title">Watchlist settings</h3>
+                <p>{currentWatchlist?.role === "owner" ? "Rename this Watchlist or remove it permanently." : "Only the Owner can rename or delete this Watchlist."}</p>
+              </div>
+            </div>
+            {currentWatchlist?.role === "owner" ? (
+              <form
+                className="manager-create-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void renameList(renameListName);
+                }}
+              >
+                <label htmlFor="rename-watchlist-name">Watchlist name</label>
+                <div className="manager-create-row">
+                  <input
+                    id="rename-watchlist-name"
+                    value={renameListName}
+                    onChange={(event) => setRenameListName(event.target.value)}
+                    maxLength={80}
+                    required
+                  />
+                  <button type="submit" disabled={listAction !== null || !renameListName.trim() || renameListName.trim() === currentWatchlist.name}>
+                    {listAction === "rename" ? "Saving…" : "Save name"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            <div className="manager-danger-zone">
+              <div>
+                <strong>{currentWatchlist?.role === "owner" ? "Delete Watchlist" : "Leave Watchlist"}</strong>
+                <p>{currentWatchlist?.role === "owner" ? "This also deletes its films, history, invitations, and reviews." : "You can rejoin later with a new invitation."}</p>
+              </div>
+              <button type="button" onClick={() => void endMembership()} disabled={listAction !== null}>
+                {listAction === "lifecycle" ? "Working…" : currentWatchlist?.role === "owner" ? "Delete" : "Leave"}
+              </button>
+            </div>
           </section>
 
           <section className="manager-section manager-create-section" aria-labelledby="new-watchlist-title">
@@ -736,6 +835,21 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
 
                 {details.genres.length ? <p className="genre-list" aria-label="Genres">{details.genres.map((genre) => <span key={genre}>{genre}</span>)}</p> : null}
 
+                {history.some((movie) => movie.id === selectedMovie.id) ? (
+                  <ReviewsPanel
+                    reviews={reviews}
+                    loading={reviewsLoading}
+                    error={reviewsError}
+                    text={reviewText}
+                    rating={reviewRating}
+                    saving={reviewSaving}
+                    onTextChange={setReviewText}
+                    onRatingChange={setReviewRating}
+                    onSave={saveReview}
+                    onDelete={() => void deleteReview()}
+                  />
+                ) : null}
+
                 <section className="details-section">
                   <h3>Story</h3>
                   <p>{details.overview || selectedMovie.overview || "No description is available."}</p>
@@ -784,78 +898,65 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               </>
             ) : null}
 
-            {history.some((movie) => movie.id === selectedMovie.id) ? (
-              <section className="details-section reviews-section" aria-labelledby="reviews-title">
-                <h3 id="reviews-title">Reviews</h3>
-
-                {reviewsLoading ? (
-                  <p className="reviews-state" role="status">Loading reviews…</p>
-                ) : null}
-                {reviewsError ? (
-                  <p className="reviews-state reviews-error" role="alert">{reviewsError}</p>
-                ) : null}
-
-                <div className="reviews-list">
-                  {reviews.filter((review) => !review.own).map((review) => (
-                    <article className="review-card" key={review.id}>
-                      <div className="review-card-heading">
-                        {review.profile ? <span className="review-author"><ProfileAvatar displayName={review.profile.displayName} small /><strong>{review.profile.displayName}</strong></span> : <strong>Watchlist member</strong>}
-                        {review.rating ? <RatingStars rating={review.rating} label={formatReviewRating(review.rating)} /> : null}
-                      </div>
-                      <p>{review.text}</p>
-                    </article>
-                  ))}
-                  {!reviewsLoading && !reviews.some((review) => !review.own) ? (
-                    <p className="reviews-empty">No reviews from other members yet.</p>
-                  ) : null}
-                </div>
-
-                <form className="review-form" onSubmit={saveReview}>
-                  <label htmlFor="review-text">Your review</label>
-                  <textarea
-                    id="review-text"
-                    value={reviewText}
-                    onChange={(event) => setReviewText(event.target.value)}
-                    maxLength={5000}
-                    required
-                    disabled={reviewSaving || reviewsLoading}
-                    placeholder="What did you think?"
-                  />
-
-                  <div className="review-rating-field">
-                    <span className="review-rating-label">Rating <span>(optional)</span></span>
-                    <StarRating
-                      value={reviewRating}
-                      onChange={setReviewRating}
-                      disabled={reviewSaving || reviewsLoading}
-                    />
-                  </div>
-
-                  <div className="review-actions">
-                    <button
-                      type="submit"
-                      disabled={reviewSaving || reviewsLoading || !reviewText.trim()}
-                    >
-                      {reviewSaving ? "Saving…" : reviews.some((review) => review.own) ? "Update review" : "Add review"}
-                    </button>
-                    {reviews.some((review) => review.own) ? (
-                      <button
-                        className="review-delete"
-                        type="button"
-                        onClick={() => void deleteReview()}
-                        disabled={reviewSaving || reviewsLoading}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
-                  </div>
-                </form>
-              </section>
-            ) : null}
           </div>
         ) : null}
       </dialog>
     </main>
+  );
+}
+
+function ReviewsPanel({ reviews, loading, error, text, rating, saving, onTextChange, onRatingChange, onSave, onDelete }: {
+  reviews: Review[];
+  loading: boolean;
+  error: string;
+  text: string;
+  rating: number | null;
+  saving: boolean;
+  onTextChange: (text: string) => void;
+  onRatingChange: (rating: number | null) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onDelete: () => void;
+}) {
+  const hasOwnReview = reviews.some((review) => review.own);
+
+  return (
+    <section className="details-section reviews-section" aria-labelledby="reviews-title">
+      <h3 id="reviews-title">Reviews</h3>
+      {loading ? <p className="reviews-state" role="status">Loading reviews…</p> : null}
+      {error ? <p className="reviews-state reviews-error" role="alert">{error}</p> : null}
+      <div className="reviews-list">
+        {reviews.filter((review) => !review.own).map((review) => (
+          <article className="review-card" key={review.id}>
+            <div className="review-card-heading">
+              {review.profile ? <span className="review-author"><ProfileAvatar displayName={review.profile.displayName} small /><strong>{review.profile.displayName}</strong></span> : <strong>Watchlist member</strong>}
+              {review.rating ? <RatingStars rating={review.rating} label={formatReviewRating(review.rating)} /> : null}
+            </div>
+            <p>{review.text}</p>
+          </article>
+        ))}
+        {!loading && !reviews.some((review) => !review.own) ? <p className="reviews-empty">No reviews from other members yet.</p> : null}
+      </div>
+      <form className="review-form" onSubmit={onSave}>
+        <label htmlFor="review-text">Your review</label>
+        <textarea
+          id="review-text"
+          value={text}
+          onChange={(event) => onTextChange(event.target.value)}
+          maxLength={5000}
+          required
+          disabled={saving || loading}
+          placeholder="What did you think?"
+        />
+        <div className="review-rating-field">
+          <span className="review-rating-label">Rating <span>(optional)</span></span>
+          <StarRating value={rating} onChange={onRatingChange} disabled={saving || loading} />
+        </div>
+        <div className="review-actions">
+          <button type="submit" disabled={saving || loading || !text.trim()}>{saving ? "Saving…" : hasOwnReview ? "Update review" : "Add review"}</button>
+          {hasOwnReview ? <button className="review-delete" type="button" onClick={onDelete} disabled={saving || loading}>Delete</button> : null}
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -964,7 +1065,7 @@ function formatRating(rating: number) {
 }
 
 function formatMovieRating(movie: Movie) {
-  const source = movie.ratingSource === "legacy" ? "Score" : movie.ratingSource === "imdb" ? "IMDb" : "TMDb";
+  const source = movie.ratingSource === "legacy" ? "Legacy rating" : movie.ratingSource === "imdb" ? "IMDb" : "TMDb";
   return `${source} ${formatRating(movie.rating)}`;
 }
 
@@ -1005,6 +1106,14 @@ function formatWatchedDate(date: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date));
 }
 
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-1.2.1-2.4-2.4-1.4-2 1.3-2-1.3L7.2 7l-2.4 1.4.1 2.4L2.8 12l2.1 1.2-.1 2.4L7.2 17l2-1.3 2 1.3 2-1.3 2 1.3 2.4-1.4-.1-2.4L20 12Z" />
+    </svg>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1037,7 +1146,7 @@ function Poster({ movie, size }: { movie: Movie; size: "card" }) {
       alt={`${movie.title} poster`}
       width={dimensions.width}
       height={dimensions.height}
-      sizes="(max-width: 430px) 104px, (max-width: 700px) 50vw, (max-width: 950px) 33vw, 25vw"
+      sizes="(max-width: 700px) 104px, (max-width: 950px) 33vw, 25vw"
     />
   );
 }
