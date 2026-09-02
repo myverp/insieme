@@ -3,16 +3,16 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/server";
 import { logout } from "@/app/auth/actions";
 import { ProfileAvatar } from "./avatar";
-import { updateProfile } from "./actions";
 import { ensureProfile } from "./data";
+import { ProfileForm } from "./profile-form";
 
-export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const userId = data?.claims?.sub;
   if (!userId) redirect("/login");
   const profile = await ensureProfile(supabase, userId);
-  const { error } = await searchParams;
+  const { error, saved } = await searchParams;
   return (
     <main className="profile-page">
       <Link href="/" className="back-link">Back to Watchlist</Link>
@@ -22,12 +22,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <p className="profile-kicker">Profile settings</p>
           <h1 id="profile-title">Your profile</h1>
         </div>
-        <form action={updateProfile} className="profile-form">
-          <label htmlFor="display-name">Display name</label>
-          <input id="display-name" name="displayName" defaultValue={profile.displayName} maxLength={80} required autoComplete="name" />
-          {error ? <p className="profile-error" role="alert">{error}</p> : null}
-          <button type="submit">Save name</button>
-        </form>
+        <ProfileForm displayName={profile.displayName} error={error} saved={saved === "1"} />
         <form action={logout} className="profile-logout-form">
           <button type="submit">Log out</button>
         </form>

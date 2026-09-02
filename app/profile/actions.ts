@@ -15,5 +15,6 @@ export async function updateProfile(formData: FormData) {
   const { error } = await supabase.from("profiles").update({ display_name: displayName.trim() }).eq("user_id", userId);
   if (error) redirect("/profile?error=Your+profile+could+not+be+updated.");
   revalidatePath("/");
-  redirect("/");
+  revalidatePath("/profile");
+  redirect("/profile?saved=1");
 }
