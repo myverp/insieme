@@ -257,6 +257,72 @@ sharedReviews = await appRequest(first, `/api/reviews?filmId=${movieId + 1}`, {
 });
 assert.deepEqual(sharedReviews.reviews, []);
 
+const managedList = await appRequest(first, "/api/watchlists", {
+  method: "POST",
+  body: JSON.stringify({ name: "Management test" }),
+});
+const managedInvitation = await appRequest(first, "/api/invitations", {
+  method: "POST",
+  watchlistId: managedList.id,
+  body: JSON.stringify({ watchlistId: managedList.id }),
+});
+const managedToken = managedInvitation.url.split("/").at(-1);
+assert(managedToken);
+const { error: managedJoinError } = await second.supabase.rpc("accept_watchlist_invite", { invite_token: managedToken });
+assert.ifError(managedJoinError);
+
+const renamedList = await appRequest(first, "/api/watchlists", {
+  method: "PUT",
+  body: JSON.stringify({ id: managedList.id, name: "Renamed by Owner" }),
+});
+assert.equal(renamedList.name, "Renamed by Owner");
+await appError(second, "/api/watchlists", 403, {
+  method: "PUT",
+  body: JSON.stringify({ id: managedList.id, name: "Renamed by Member" }),
+});
+await appError(outsider, "/api/watchlists", 403, {
+  method: "PUT",
+  body: JSON.stringify({ id: managedList.id, name: "Renamed by Outsider" }),
+});
+
+const { error: ownershipChangeError } = await first.supabase
+  .from("watchlists")
+  .update({ created_by: outsiderUser.id })
+  .eq("id", managedList.id);
+assert(ownershipChangeError, "Watchlist ownership must not be changeable");
+
+const leaveResult = await appRequest(second, "/api/watchlists", {
+  method: "DELETE",
+  body: JSON.stringify({ id: managedList.id }),
+});
+assert.equal(leaveResult.action, "left");
+const { data: formerMemberRows, error: formerMemberRowsError } = await second.supabase
+  .from("watchlists")
+  .select("id")
+  .eq("id", managedList.id);
+assert.ifError(formerMemberRowsError);
+assert.deepEqual(formerMemberRows, []);
+await appError(second, "/api/watchlists", 403, {
+  method: "DELETE",
+  body: JSON.stringify({ id: managedList.id }),
+});
+await appError(outsider, "/api/watchlists", 403, {
+  method: "DELETE",
+  body: JSON.stringify({ id: managedList.id }),
+});
+
+const deleteResult = await appRequest(first, "/api/watchlists", {
+  method: "DELETE",
+  body: JSON.stringify({ id: managedList.id }),
+});
+assert.equal(deleteResult.action, "deleted");
+const { data: deletedListRows, error: deletedListRowsError } = await first.supabase
+  .from("watchlists")
+  .select("id")
+  .eq("id", managedList.id);
+assert.ifError(deletedListRowsError);
+assert.deepEqual(deletedListRows, []);
+
 await first.supabase.auth.signOut();
 const loggedOutResponse = await fetch(`${appUrl}/api/watchlist`, { headers: { Cookie: first.cookieHeader() } });
 assert.equal(loggedOutResponse.status, 401);
@@ -266,7 +332,7 @@ assert.ifError(loginError);
 firstList = await appRequest(first, "/api/watchlist", { watchlistId: sharedList.id });
 assert.deepEqual(firstList.history.map((movie) => movie.title), ["Our shared film"]);
 
-console.log("Auth integration passed: profiles, multiple Watchlists, invitations, shared history, member reviews, session persistence, logout, and outsider RLS isolation.");
+console.log("Auth integration passed: profiles, Watchlist ownership, rename/leave/delete, invitations, shared history, member reviews, session persistence, logout, and outsider RLS isolation.");
 
 function authClient() {
   const jar = new Map();

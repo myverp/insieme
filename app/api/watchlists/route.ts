@@ -15,10 +15,58 @@ export async function POST(request: NextRequest) {
   }
 
   const { data: watchlistId, error } = await auth.supabase.rpc("create_watchlist", { list_name: name });
-  if (error || !watchlistId) return databaseError(error);
+  if (error || !watchlistId) return databaseError("created", error);
 
   const response = NextResponse.json({ id: watchlistId, name });
   response.cookies.set(COOKIE, watchlistId, cookieOptions());
+  return response;
+}
+
+export async function PUT(request: NextRequest) {
+  const auth = await authenticatedClient();
+  if (!auth) return unauthorized();
+
+  const input = (await request.json().catch(() => null)) as { id?: string; name?: string } | null;
+  const name = input?.name?.trim();
+  if (!input?.id || !name || name.length > 80) {
+    return NextResponse.json({ error: "Enter a name between 1 and 80 characters." }, { status: 400 });
+  }
+
+  const watchlists = await ensureWatchlists(auth.supabase, auth.userId);
+  const selected = watchlists.find((watchlist) => watchlist.id === input.id);
+  if (!selected) return NextResponse.json({ error: "You are not a member of this Watchlist." }, { status: 403 });
+  if (selected.role !== "owner") return NextResponse.json({ error: "Only the Owner can rename this Watchlist." }, { status: 403 });
+
+  const { data, error } = await auth.supabase
+    .from("watchlists")
+    .update({ name })
+    .eq("id", selected.id)
+    .select("id,name")
+    .single();
+  if (error || !data) return databaseError("renamed", error);
+  return NextResponse.json({ ...data, role: selected.role });
+}
+
+export async function DELETE(request: NextRequest) {
+  const auth = await authenticatedClient();
+  if (!auth) return unauthorized();
+
+  const input = (await request.json().catch(() => null)) as { id?: string } | null;
+  if (!input?.id) return NextResponse.json({ error: "Choose a Watchlist." }, { status: 400 });
+
+  const watchlists = await ensureWatchlists(auth.supabase, auth.userId);
+  const selected = watchlists.find((watchlist) => watchlist.id === input.id);
+  if (!selected) return NextResponse.json({ error: "You are not a member of this Watchlist." }, { status: 403 });
+
+  const result = selected.role === "owner"
+    ? await auth.supabase.from("watchlists").delete().eq("id", selected.id)
+    : await auth.supabase.from("watchlist_members").delete().eq("watchlist_id", selected.id).eq("user_id", auth.userId);
+  if (result.error) return databaseError(selected.role === "owner" ? "deleted" : "left", result.error);
+
+  const remaining = await ensureWatchlists(auth.supabase, auth.userId);
+  const next = remaining[0];
+  const response = NextResponse.json({ action: selected.role === "owner" ? "deleted" : "left", nextId: next.id });
+  response.cookies.set(COOKIE, next.id, cookieOptions());
   return response;
 }
 
@@ -57,7 +105,7 @@ function unauthorized() {
   return NextResponse.json({ error: "You must be logged in." }, { status: 401 });
 }
 
-function databaseError(error: unknown) {
-  console.error("Watchlist creation error", error);
-  return NextResponse.json({ error: "The Watchlist could not be created." }, { status: 502 });
+function databaseError(action: string, error: unknown) {
+  console.error(`Watchlist could not be ${action}`, error);
+  return NextResponse.json({ error: `The Watchlist could not be ${action}.` }, { status: 502 });
 }

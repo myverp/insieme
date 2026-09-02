@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type Watchlist = { id: string; name: string };
+export type WatchlistRole = "owner" | "member";
+export type Watchlist = { id: string; name: string; role: WatchlistRole };
 
 export async function listWatchlists(supabase: SupabaseClient, userId: string): Promise<Watchlist[]> {
   const { data: memberships, error: membershipError } = await supabase
     .from("watchlist_members")
-    .select("watchlist_id")
+    .select("watchlist_id,role")
     .eq("user_id", userId)
     .order("joined_at", { ascending: true });
   if (membershipError) throw membershipError;
@@ -19,8 +20,13 @@ export async function listWatchlists(supabase: SupabaseClient, userId: string): 
     .in("id", ids);
   if (error) throw error;
 
-  const byId = new Map((data as Watchlist[]).map((watchlist) => [watchlist.id, watchlist]));
-  return ids.flatMap((id) => byId.get(id) ?? []);
+  const byId = new Map((data as Array<{ id: string; name: string }>).map((watchlist) => [watchlist.id, watchlist]));
+  const roles = new Map(memberships.map((membership) => [membership.watchlist_id, membership.role as WatchlistRole]));
+  return ids.flatMap((id) => {
+    const watchlist = byId.get(id);
+    const role = roles.get(id);
+    return watchlist && role ? [{ ...watchlist, role }] : [];
+  });
 }
 
 export async function ensureWatchlists(supabase: SupabaseClient, userId: string): Promise<Watchlist[]> {
@@ -30,7 +36,7 @@ export async function ensureWatchlists(supabase: SupabaseClient, userId: string)
   const { data: watchlistId, error } = await supabase.rpc("create_watchlist", { list_name: "My Watchlist" });
   if (error || !watchlistId) throw error ?? new Error("The Watchlist could not be created.");
 
-  return [{ id: watchlistId, name: "My Watchlist" }];
+  return [{ id: watchlistId, name: "My Watchlist", role: "owner" }];
 }
 
 export function selectWatchlist(watchlists: Watchlist[], preferredId?: string): Watchlist {

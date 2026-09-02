@@ -12,6 +12,10 @@ A named collection of films that one or more Members are considering for a futur
 
 A person who has joined a Watchlist and can discover, add, remove, and mark films as watched with the group. A person can be a Member of several Watchlists. _Avoid:_ follower.
 
+## Owner
+
+The Member who created a Watchlist and is responsible for its name and lifecycle. Only the Owner can rename or delete that Watchlist. Other Members may leave it; the Owner cannot leave without deleting it. Every Watchlist has exactly one Owner. _Avoid:_ admin or moderator.
+
 ## Invitation
 
 A private link that allows another person to become a Member of a Watchlist. _Avoid:_ public link or share.
