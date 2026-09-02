@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-02T02:47:49.5842365Z",
+  "title": "Design System: Insieme",
+  "extensions": {
+    "colorMeta": {
+      "forest-action": { "role": "primary", "displayName": "Forest Action", "canonical": "#286044", "tonalRamp": ["oklch(20% 0.055 155)", "oklch(30% 0.07 155)", "oklch(40% 0.08 155)", "oklch(50% 0.085 155)", "oklch(60% 0.075 155)", "oklch(72% 0.06 155)", "oklch(84% 0.035 155)", "oklch(94% 0.015 155)"] },
+      "forest-deep": { "role": "primary", "displayName": "Deep Forest Ink", "canonical": "#19472f", "tonalRamp": ["oklch(17% 0.045 155)", "oklch(26% 0.06 155)", "oklch(36% 0.07 155)", "oklch(47% 0.072 155)", "oklch(59% 0.063 155)", "oklch(71% 0.048 155)", "oklch(83% 0.028 155)", "oklch(94% 0.012 155)"] },
+      "forest-mist": { "role": "primary", "displayName": "Forest Mist", "canonical": "#e5efe7", "tonalRamp": ["oklch(18% 0.025 150)", "oklch(29% 0.03 150)", "oklch(41% 0.032 150)", "oklch(54% 0.03 150)", "oklch(67% 0.025 150)", "oklch(78% 0.02 150)", "oklch(88% 0.015 150)", "oklch(96% 0.008 150)"] },
+      "warm-paper": { "role": "neutral", "displayName": "Warm Paper", "canonical": "#f5f1e8", "tonalRamp": ["oklch(18% 0.018 85)", "oklch(30% 0.022 85)", "oklch(43% 0.024 85)", "oklch(56% 0.023 85)", "oklch(69% 0.02 85)", "oklch(80% 0.016 85)", "oklch(89% 0.012 85)", "oklch(96% 0.008 85)"] },
+      "cream-surface": { "role": "neutral", "displayName": "Cream Surface", "canonical": "#fffdfa", "tonalRamp": ["oklch(18% 0.01 80)", "oklch(30% 0.012 80)", "oklch(43% 0.014 80)", "oklch(56% 0.013 80)", "oklch(69% 0.011 80)", "oklch(81% 0.009 80)", "oklch(91% 0.006 80)", "oklch(98% 0.003 80)"] },
+      "ink": { "role": "neutral", "displayName": "Living Ink", "canonical": "#1b2921", "tonalRamp": ["oklch(16% 0.025 150)", "oklch(27% 0.028 150)", "oklch(39% 0.027 150)", "oklch(52% 0.024 150)", "oklch(65% 0.02 150)", "oklch(77% 0.015 150)", "oklch(88% 0.009 150)", "oklch(96% 0.004 150)"] },
+      "quiet-ink": { "role": "neutral", "displayName": "Quiet Ink", "canonical": "#6a716a", "tonalRamp": ["oklch(18% 0.012 150)", "oklch(30% 0.014 150)", "oklch(42% 0.014 150)", "oklch(54% 0.013 150)", "oklch(66% 0.011 150)", "oklch(78% 0.009 150)", "oklch(88% 0.006 150)", "oklch(96% 0.003 150)"] },
+      "warm-border": { "role": "neutral", "displayName": "Warm Border", "canonical": "#ddd7ca", "tonalRamp": ["oklch(18% 0.014 80)", "oklch(30% 0.017 80)", "oklch(42% 0.018 80)", "oklch(55% 0.017 80)", "oklch(68% 0.015 80)", "oklch(79% 0.012 80)", "oklch(88% 0.009 80)", "oklch(95% 0.005 80)"] },
+      "danger": { "role": "secondary", "displayName": "Muted Brick", "canonical": "#ad493a", "tonalRamp": ["oklch(18% 0.055 30)", "oklch(29% 0.075 30)", "oklch(41% 0.095 30)", "oklch(53% 0.11 30)", "oklch(65% 0.095 30)", "oklch(76% 0.07 30)", "oklch(86% 0.04 30)", "oklch(95% 0.015 30)"] },
+      "terracotta": { "role": "secondary", "displayName": "Terracotta Thread", "canonical": "#c8644c", "tonalRamp": ["oklch(18% 0.055 35)", "oklch(30% 0.075 35)", "oklch(42% 0.095 35)", "oklch(54% 0.11 35)", "oklch(66% 0.1 35)", "oklch(77% 0.075 35)", "oklch(87% 0.045 35)", "oklch(95% 0.018 35)"] },
+      "flower-pink": { "role": "tertiary", "displayName": "Flower Pink", "canonical": "#e887a4", "tonalRamp": ["oklch(18% 0.055 355)", "oklch(30% 0.08 355)", "oklch(42% 0.105 355)", "oklch(55% 0.13 355)", "oklch(67% 0.12 355)", "oklch(78% 0.09 355)", "oklch(88% 0.052 355)", "oklch(96% 0.02 355)"] },
+      "flower-gold": { "role": "tertiary", "displayName": "Flower Gold", "canonical": "#e3ad65", "tonalRamp": ["oklch(18% 0.045 75)", "oklch(30% 0.065 75)", "oklch(42% 0.085 75)", "oklch(55% 0.105 75)", "oklch(68% 0.1 75)", "oklch(79% 0.075 75)", "oklch(88% 0.045 75)", "oklch(96% 0.018 75)"] },
+      "field-white": { "role": "neutral", "displayName": "Field White", "canonical": "#ffffff", "tonalRamp": ["oklch(18% 0 0)", "oklch(30% 0 0)", "oklch(42% 0 0)", "oklch(55% 0 0)", "oklch(68% 0 0)", "oklch(80% 0 0)", "oklch(90% 0 0)", "oklch(100% 0 0)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Identity Display", "purpose": "The Insieme wordmark and highest-level identity moments." },
+      "headline": { "displayName": "Dialog Headline", "purpose": "Film details and prominent dialog headings." },
+      "title": { "displayName": "Film Title", "purpose": "Two-line film card titles." },
+      "body": { "displayName": "Reading Body", "purpose": "Descriptions and explanatory copy." },
+      "label": { "displayName": "Control Label", "purpose": "Controls, metadata, field labels, and compact supporting text." }
+    },
+    "shadows": [
+      { "name": "quiet-panel", "value": "0 12px 36px rgba(50, 55, 41, .08)", "purpose": "Soft separation for the search surface." },
+      { "name": "resting-card", "value": "0 10px 28px rgba(48, 51, 39, .08)", "purpose": "Ambient depth under film cards." },
+      { "name": "focused-card", "value": "0 0 0 3px rgba(47, 98, 72, .14), 0 14px 34px rgba(48, 51, 39, .12)", "purpose": "Keyboard focus and active card elevation." },
+      { "name": "dialog", "value": "0 24px 80px rgba(18, 31, 23, .28)", "purpose": "Modal separation against a darkened backdrop." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "150ms ease", "purpose": "Color, border, and compact control feedback." },
+      { "name": "card", "value": "200ms ease", "purpose": "Card border and ambient shadow changes." },
+      { "name": "collapse", "value": "320ms ease", "purpose": "Watchlist and history disclosure." },
+      { "name": "sheet-in", "value": "280ms ease-out", "purpose": "Mobile dialog and filter-sheet entrance." }
+    ],
+    "breakpoints": [
+      { "name": "grid-three", "value": "950px" },
+      { "name": "compact-cards", "value": "700px" },
+      { "name": "stacked-search", "value": "600px" },
+      { "name": "single-search-result", "value": "350px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The clearest next step on a surface.",
+      "html": "<button class=\"ds-btn-primary\">Search</button>",
+      "css": ".ds-btn-primary { min-height: 44px; padding: 0 20px; border: 1px solid var(--accent, #286044); border-radius: 10px; background: var(--accent, #286044); color: #fff; font: 750 14px Corbel, Calibri, 'Segoe UI', sans-serif; box-shadow: 0 4px 12px rgba(35,77,56,.18); transition: background .15s, border-color .15s, box-shadow .15s; } .ds-btn-primary:hover { background: var(--accent-dark, #19472f); border-color: var(--accent-dark, #19472f); } .ds-btn-primary:focus-visible { outline: 3px solid #e0a800; outline-offset: 3px; }"
+    },
+    {
+      "name": "Soft Action Button",
+      "kind": "button",
+      "refersTo": "button-soft",
+      "description": "A secondary or selected action that stays within the green family.",
+      "html": "<button class=\"ds-btn-soft\">Mark watched</button>",
+      "css": ".ds-btn-soft { min-height: 40px; padding: 0 14px; border: 1px solid #b7cdbd; border-radius: 8px; background: var(--accent-soft, #e5efe7); color: var(--accent-dark, #19472f); font: 750 13px Corbel, Calibri, 'Segoe UI', sans-serif; transition: background .15s, border-color .15s; } .ds-btn-soft:hover { border-color: #91b09b; background: #d9e8dc; } .ds-btn-soft:focus-visible { outline: 3px solid #e0a800; outline-offset: 3px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "description": "A restrained destructive action that never competes with the primary button.",
+      "html": "<button class=\"ds-btn-danger\">Delete Watchlist</button>",
+      "css": ".ds-btn-danger { min-height: 40px; padding: 0 14px; border: 1px solid #d7aaa2; border-radius: 8px; background: transparent; color: var(--danger, #ad493a); font: 750 13px Corbel, Calibri, 'Segoe UI', sans-serif; transition: background .15s, border-color .15s; } .ds-btn-danger:hover { border-color: var(--danger, #ad493a); background: #fbefed; } .ds-btn-danger:focus-visible { outline: 3px solid #e0a800; outline-offset: 3px; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A crisp field set inside a warm cream panel.",
+      "html": "<input class=\"ds-input-search\" value=\"Memento\" aria-label=\"Search by film title\">",
+      "css": ".ds-input-search { width: 280px; height: 48px; padding: 0 16px; border: 1px solid #aaa99e; border-radius: 11px; background: #fff; color: var(--text, #1b2921); font: 14px Corbel, Calibri, 'Segoe UI', sans-serif; transition: border-color .15s, box-shadow .15s; } .ds-input-search:hover { border-color: #7d8b82; } .ds-input-search:focus { border-color: var(--accent, #286044); box-shadow: 0 0 0 3px rgba(47,98,72,.13); outline: 0; }"
+    },
+    {
+      "name": "Metadata Chip",
+      "kind": "chip",
+      "refersTo": "metadata-chip",
+      "description": "Compact neutral context for years, ratings, dates, and counts.",
+      "html": "<span class=\"ds-chip-meta\">2000 · TMDb 8.2</span>",
+      "css": ".ds-chip-meta { display: inline-flex; align-items: center; width: fit-content; padding: 5px 9px; border-radius: 999px; background: var(--background, #f5f1e8); color: #526057; font: 700 12px Corbel, Calibri, 'Segoe UI', sans-serif; }"
+    },
+    {
+      "name": "Film Card",
+      "kind": "card",
+      "refersTo": "film-card",
+      "description": "The signature image-led choice unit.",
+      "html": "<article class=\"ds-film-card\"><div class=\"ds-film-poster\" aria-label=\"Poster placeholder\"></div><div class=\"ds-film-copy\"><strong>Memento</strong><span>2000 · TMDb 8.2</span></div></article>",
+      "css": ".ds-film-card { width: 220px; overflow: hidden; border: 1px solid rgba(216,208,194,.9); border-radius: 18px; background: var(--surface, #fffdfa); color: var(--text, #1b2921); box-shadow: 0 10px 28px rgba(48,51,39,.08); font-family: Corbel, Calibri, 'Segoe UI', sans-serif; transition: border-color .2s, box-shadow .2s; } .ds-film-card:hover { border-color: #c7bcaa; box-shadow: 0 14px 30px rgba(48,51,39,.12); } .ds-film-card:focus-within { outline: 3px solid #e0a800; outline-offset: 3px; } .ds-film-poster { aspect-ratio: 2/3; background: #e8eae7; } .ds-film-copy { display: grid; gap: 8px; padding: 18px 17px; } .ds-film-copy strong { font-size: 19px; line-height: 1.2; } .ds-film-copy span { color: #526057; font-size: 12px; font-weight: 700; }"
+    },
+    {
+      "name": "Header Control",
+      "kind": "nav",
+      "description": "Compact navigation control shared by the Watchlist selector, management action, and profile.",
+      "html": "<button class=\"ds-header-control\">Manage Watchlists</button>",
+      "css": ".ds-header-control { min-height: 40px; padding: 0 14px; border: 1px solid var(--border, #ddd7ca); border-radius: 9px; background: var(--surface, #fffdfa); color: var(--muted, #6a716a); font: 700 14px Corbel, Calibri, 'Segoe UI', sans-serif; transition: border-color .15s, color .15s; } .ds-header-control:hover { border-color: #b8b2a6; color: var(--text, #1b2921); } .ds-header-control:focus-visible { outline: 3px solid #e0a800; outline-offset: 3px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Shared Living Room",
+    "overview": "Insieme should feel like settling into a familiar room with someone you trust: warm enough to invite lingering, orderly enough to make a decision, and never so styled that the interface becomes the event. Cream surfaces, forest-green actions, dark ink, and the small flower mark create a domestic visual language without becoming rustic or nostalgic.\n\nThe system is friendly and tactile. Controls have comfortable targets, modest curves, clear borders, and immediate state changes. Density stays practical: film imagery carries visual energy while surrounding controls remain calm. Avoid cold dashboard styling, ornamental excess, and novelty that slows the shared decision.",
+    "keyCharacteristics": [
+      "Warm paper-like neutrals with deep green action color.",
+      "Friendly, tactile controls with restrained rounded geometry.",
+      "Film posters provide the strongest color and visual contrast.",
+      "Clear hierarchy and compact supporting information.",
+      "Small floral color accents are rare, recognizable brand punctuation."
+    ],
+    "rules": [
+      { "name": "The Poster Leads Rule", "body": "UI colors stay restrained so film artwork remains the most chromatic content on the page.", "section": "colors" },
+      { "name": "The Flower Is Punctuation Rule", "body": "Pink and gold belong to the flower mark; do not spread them across routine buttons, badges, or status messages.", "section": "colors" },
+      { "name": "The One Family Rule", "body": "Do not introduce a display typeface to manufacture personality; the existing humanist family and film imagery already carry the voice.", "section": "typography" },
+      { "name": "The Decision Path Rule", "body": "Preserve the order of discovery, shortlist, and watched history. Layout changes may compress that path but must not obscure it.", "section": "layout" },
+      { "name": "The Ambient Layer Rule", "body": "Shadows create separation and focus; they never become decoration or imitate floating glass.", "section": "elevation" },
+      { "name": "The Curves Follow Scale Rule", "body": "Larger containers receive larger radii; do not apply pill shapes to ordinary buttons, inputs, cards, or dialogs.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do let film imagery carry most of the page's color and visual drama.",
+      "Do use Forest Action for the clearest next step and Forest Mist for secondary or selected states.",
+      "Do preserve warm borders even when an ambient shadow separates a surface.",
+      "Do keep metadata compact, readable, and visually subordinate to titles.",
+      "Do transform dense dialogs into bottom sheets and poster cards into horizontal rows on small screens."
+    ],
+    "donts": [
+      "Don't turn the interface into a cold analytics dashboard or generic SaaS shell.",
+      "Don't use gradients, glass effects, glow shadows, or decorative floating shapes.",
+      "Don't distribute the flower's pink and gold across routine UI controls.",
+      "Don't add rounded containers around content that already has a clear grouping relationship.",
+      "Don't animate for personality alone; motion should explain state, collapse, or spatial transition.",
+      "Don't compete with poster artwork through loud UI color or ornamental typography."
+    ]
+  }
+}
