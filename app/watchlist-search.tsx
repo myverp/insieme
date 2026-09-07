@@ -32,11 +32,13 @@ type WatchlistSearchProps = {
   watchlist: Movie[];
   history: HistoryMovie[];
   inputRef: RefObject<HTMLInputElement | null>;
+  onViewWatchlist: () => void;
   onAdd: (movie: Movie) => Promise<void>;
   onOpenDetails: (movie: Movie) => Promise<void>;
 };
 
-export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDetails }: WatchlistSearchProps) {
+export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
+  const [visibleCount, setVisibleCount] = useState(4);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
   const [results, setResults] = useState<Movie[]>([]);
@@ -83,6 +85,7 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
       const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string };
       if (!response.ok) throw new Error(data.error ?? "Film search is unavailable.");
       setResults(data.movies ?? []);
+      setVisibleCount(4);
       setMessage(data.movies?.length ? (data.message ?? "") : (data.message || "No films found."));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -223,10 +226,10 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
       {message && !loading ? <p className="status" role="status">{message}</p> : null}
       {loading || results.length || searchAttempted ? (
         <div className="results-block">
-          <div className="results-heading"><h3>Search results</h3>{results.length ? <span>{results.length} found</span> : null}</div>
+          <div className="results-heading"><h3>Search results</h3>{results.length ? <span aria-live="polite">{Math.min(visibleCount, results.length)} of {results.length} found</span> : null}</div>
           {loading ? <SearchSkeleton /> : results.length ? (
             <ul className="search-results" aria-label="Film search results">
-              {results.map((movie) => {
+              {results.slice(0, visibleCount).map((movie) => {
                 const added = watchlist.some((item) => item.id === movie.id);
                 const watched = history.some((item) => item.id === movie.id);
                 return (
@@ -256,6 +259,11 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
           )}
         </div>
       ) : null}
+      {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 4)}>Show more films</button> : null}
+      <div className="watchlist-bridge">
+        <span>Save possibilities. Choose together.</span>
+        <button type="button" onClick={onViewWatchlist}>View Watchlist ({watchlist.length})</button>
+      </div>
     </section>
   );
 }

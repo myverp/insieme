@@ -501,13 +501,18 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         watchlist={watchlist}
         history={history}
         inputRef={searchInput}
+        onViewWatchlist={() => {
+          setWatchlistOpen(true);
+          document.getElementById("watchlist-heading")?.focus();
+          document.getElementById("watchlist-heading")?.scrollIntoView({ block: "start" });
+        }}
         onAdd={addMovie}
         onOpenDetails={openDetails}
       />
 
       <section className="list-section" aria-labelledby="watchlist-heading">
         <div className="list-heading">
-          <h2 id="watchlist-heading">
+          <h2 id="watchlist-heading" tabIndex={-1}>
             <button
               className="list-heading-toggle"
               type="button"
@@ -553,15 +558,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                           onClick={() => void markWatched(movie)}
                         >
                           Mark watched
-                        </button>
-                        <button
-                          className="remove-button"
-                          type="button"
-                          onClick={() => removeMovie(movie)}
-                          aria-label={`Remove ${movie.title}`}
-                          title={`Remove ${movie.title}`}
-                        >
-                          <TrashIcon />
                         </button>
                       </div>
                     </li>
@@ -704,10 +700,40 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             </ul>
           </section>
 
-          <section className="manager-section" aria-labelledby="watchlist-settings-title">
+          <section className="manager-section manager-create-section" aria-labelledby="new-watchlist-title">
             <div className="manager-section-heading">
               <div>
-                <h3 id="watchlist-settings-title">Watchlist settings</h3>
+                <h3 id="new-watchlist-title">Create a new Watchlist</h3>
+                <p>Start a separate list for another group or mood.</p>
+              </div>
+            </div>
+            <form
+              className="manager-create-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createList(newListName);
+              }}
+            >
+              <label htmlFor="new-watchlist-name">Watchlist name</label>
+              <div className="manager-create-row">
+                <input
+                  id="new-watchlist-name"
+                  value={newListName}
+                  onChange={(event) => setNewListName(event.target.value)}
+                  maxLength={80}
+                  placeholder="For example: Weekend picks"
+                  required
+                />
+                <button type="submit" disabled={listAction !== null || !newListName.trim()}>
+                  {listAction === "create" ? "Creating…" : "Create list"}
+                </button>
+              </div>
+            </form>
+          </section>
+          <details className="manager-section manager-settings" key={watchlistId}>
+            <summary>Watchlist settings</summary>
+            <div className="manager-section-heading">
+              <div>
                 <p>{currentWatchlist?.role === "owner" ? "Rename this Watchlist or remove it permanently." : "Only the Owner can rename or delete this Watchlist."}</p>
               </div>
             </div>
@@ -743,38 +769,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                 {listAction === "lifecycle" ? "Working…" : currentWatchlist?.role === "owner" ? "Delete" : "Leave"}
               </button>
             </div>
-          </section>
+          </details>
 
-          <section className="manager-section manager-create-section" aria-labelledby="new-watchlist-title">
-            <div className="manager-section-heading">
-              <div>
-                <h3 id="new-watchlist-title">Create a new Watchlist</h3>
-                <p>Start a separate list for another group or mood.</p>
-              </div>
-            </div>
-            <form
-              className="manager-create-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void createList(newListName);
-              }}
-            >
-              <label htmlFor="new-watchlist-name">Watchlist name</label>
-              <div className="manager-create-row">
-                <input
-                  id="new-watchlist-name"
-                  value={newListName}
-                  onChange={(event) => setNewListName(event.target.value)}
-                  maxLength={80}
-                  placeholder="For example: Weekend picks"
-                  required
-                />
-                <button type="submit" disabled={listAction !== null || !newListName.trim()}>
-                  {listAction === "create" ? "Creating…" : "Create list"}
-                </button>
-              </div>
-            </form>
-          </section>
         </div>
       </dialog>
 
@@ -1110,14 +1106,6 @@ function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-1.2.1-2.4-2.4-1.4-2 1.3-2-1.3L7.2 7l-2.4 1.4.1 2.4L2.8 12l2.1 1.2-.1 2.4L7.2 17l2-1.3 2 1.3 2-1.3 2 1.3 2.4-1.4-.1-2.4L20 12Z" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
     </svg>
   );
 }
