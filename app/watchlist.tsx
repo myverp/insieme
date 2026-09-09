@@ -31,6 +31,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [reviewRating, setReviewRating] = useState<number | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const [members, setMembers] = useState<WatchlistMember[]>([{ profile, role: currentWatchlist?.role ?? "owner" }]);
+  const [membersLoadedFor, setMembersLoadedFor] = useState<string | null>(null);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | "rename" | "lifecycle" | null>(null);
   const [newListName, setNewListName] = useState("");
   const [renameListName, setRenameListName] = useState(currentWatchlist?.name ?? "");
@@ -51,7 +52,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     void fetch("/api/profiles", { cache: "no-store" })
       .then(async (response) => {
         const data = (await response.json()) as { members?: WatchlistMember[] };
-        if (response.ok && !cancelled) setMembers(data.members ?? [{ profile, role: currentWatchlist?.role ?? "owner" }]);
+        if (response.ok && data.members && !cancelled) {
+          setMembers(data.members);
+          setMembersLoadedFor(watchlistId);
+        }
       })
       .catch(() => {
         if (!cancelled) toast.error("Watchlist members could not be refreshed.", { id: "member-refresh" });
@@ -498,6 +502,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       ) : null}
 
       <WatchlistSearch
+        watchlistName={currentWatchlist?.name ?? "Watchlist"}
+        members={membersLoadedFor === watchlistId ? members : null}
         watchlist={watchlist}
         history={history}
         inputRef={searchInput}
@@ -551,15 +557,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                           <span className="film-meta">{movie.year || "Year unknown"} · {formatMovieRating(movie)}</span>
                         </span>
                       </button>
-                      <div className="film-actions">
-                        <button
-                          className="watched-button"
-                          type="button"
-                          onClick={() => void markWatched(movie)}
-                        >
-                          Mark watched
-                        </button>
-                      </div>
                     </li>
                   ))}
               </ul>

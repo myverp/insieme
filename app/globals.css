@@ -140,7 +140,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .empty-state-icon { display: inline-grid; width: 34px; height: 34px; place-items: center; margin-bottom: 3px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); font-size: 20px; }
 .empty-state-list-icon { width: 38px; height: 38px; margin-bottom: 1px; border-radius: 0; background: transparent; }
 .empty-state-list-icon svg { width: 32px; height: 32px; color: var(--accent-dark); }
-.search-results { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.search-results { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .search-results li { min-width: 0; display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; border: 1px solid #ded8cc; border-radius: 14px; background: var(--surface); box-shadow: 0 6px 18px rgba(48, 51, 39, .07); }
 .search-results .poster, .search-results .poster-placeholder { border-radius: 0; box-shadow: none; }
 .search-results .result-details-trigger { display: grid; grid-template-rows: auto 1fr; min-width: 0; min-height: 0; margin: 0; padding: 0; overflow: hidden; border: 0; border-radius: 0; background: transparent; color: var(--text); text-align: left; box-shadow: none; }
@@ -177,7 +177,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 .film-details-trigger .film-info { width: 100%; }
 .poster { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; background: #e8eae7; }
 .poster-placeholder { width: 100%; aspect-ratio: 2 / 3; display: grid; place-items: center; background: #e8eae7; color: var(--muted); text-align: center; font-size: 12px; }
-.film-info { min-width: 0; flex: 1; padding: 18px 17px 7px; }
+.film-info { min-width: 0; flex: 1; padding: 18px 17px; }
 .film-title { display: -webkit-box; min-height: 2.4em; margin: 0; overflow: hidden; font-family: var(--font-site); font-size: 19px; font-weight: 700; line-height: 1.2; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .film-meta { display: inline-flex; align-items: center; width: fit-content; margin: 8px 0 0; padding: 5px 9px; border-radius: 999px; background: var(--background); color: #526057; font-size: 12px; font-weight: 700; }
 .film-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin: 7px 0 0; padding: 10px 11px 12px; border-top: 1px solid rgba(221, 215, 202, .72); background: rgba(250, 248, 242, .62); }
@@ -361,7 +361,7 @@ ul { margin: 0; padding: 0; list-style: none; }
   .film-grid li { min-height: 156px; contain-intrinsic-size: 156px; border-radius: 14px; }
   .film-details-trigger { min-height: 156px; flex-direction: row; }
   .film-details-trigger .poster, .film-details-trigger .poster-placeholder { width: 104px; flex: none; aspect-ratio: 2 / 3; }
-  .film-info { padding: 18px 14px 72px; }
+  .film-info { padding: 18px 14px; }
   .film-title { min-height: 0; font-size: 16px; line-height: 1.25; }
   .film-grid .film-actions { position: absolute; right: 10px; bottom: 10px; left: 118px; z-index: 1; justify-content: flex-start; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; opacity: 1; pointer-events: auto; transform: none; }
   .history-grid .film-info { padding-bottom: 18px; }
@@ -408,7 +408,14 @@ ul { margin: 0; padding: 0; list-style: none; }
 }
 
 .watchlist-bridge { position: sticky; bottom: 12px; z-index: 3; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: 20px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-.watchlist-bridge > span { color: var(--muted); font-size: 14px; }
+.watchlist-bridge > span { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: 14px; }
+.discovery-context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.discovery-context > div { min-width: 0; overflow-wrap: anywhere; }
+.discovery-context strong { font-size: 16px; }
+.discovery-context p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.discovery-members { display: flex; align-items: center; gap: 6px; }
+.discovery-members li { display: flex; align-items: center; color: var(--muted); font-size: 12px; }
+.discovery-members .profile-avatar-small { width: 32px; height: 32px; font-size: 12px; }
 .watchlist-bridge button, .show-more-results { min-height: 44px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); color: var(--accent-dark); font-weight: 750; }
 .show-more-results { margin-top: 16px; }
 #watchlist-heading { scroll-margin-top: 24px; }

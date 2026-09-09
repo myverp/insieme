@@ -3,7 +3,8 @@
 import Image from "next/image";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { HistoryMovie, Movie } from "@/app/watchlist-types";
+import type { HistoryMovie, Movie, WatchlistMember } from "@/app/watchlist-types";
+import { ProfileAvatar } from "@/app/profile/avatar";
 
 const GENRES = [
   [28, "Action"], [12, "Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"],
@@ -29,6 +30,8 @@ const EMPTY_FILTERS: SearchFilters = {
 };
 
 type WatchlistSearchProps = {
+  watchlistName: string;
+  members: WatchlistMember[] | null;
   watchlist: Movie[];
   history: HistoryMovie[];
   inputRef: RefObject<HTMLInputElement | null>;
@@ -37,7 +40,7 @@ type WatchlistSearchProps = {
   onOpenDetails: (movie: Movie) => Promise<void>;
 };
 
-export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
+export function WatchlistSearch({ watchlistName, members, watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
   const [visibleCount, setVisibleCount] = useState(4);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
@@ -150,6 +153,13 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
 
   return (
     <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
+      <div className="discovery-context">
+        <div><strong>{watchlistName}</strong><p>Private{members ? ` · ${members.length} ${members.length === 1 ? "Member" : "Members"}` : ""}</p></div>
+        {members ? <ul className="discovery-members" aria-label="Watchlist members">
+          {members.slice(0, 4).map((member) => <li key={member.profile.userId} title={member.profile.displayName}><ProfileAvatar displayName={member.profile.displayName} small /><span className="sr-only">{member.profile.displayName}</span></li>)}
+          {members.length > 4 ? <li>+{members.length - 4}<span className="sr-only"> more Members</span></li> : null}
+        </ul> : null}
+      </div>
       <h2 id="add-film-heading">Add a film</h2>
       <label className="sr-only" htmlFor="film-search">Search by title</label>
       <form className="search-row" onSubmit={(event) => { event.preventDefault(); void searchMovies(); }}>
@@ -261,7 +271,7 @@ export function WatchlistSearch({ watchlist, history, inputRef, onAdd, onOpenDet
       ) : null}
       {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 4)}>Show more films</button> : null}
       <div className="watchlist-bridge">
-        <span>Save possibilities. Choose together.</span>
+        <span>{watchlistName}</span>
         <button type="button" onClick={onViewWatchlist}>View Watchlist ({watchlist.length})</button>
       </div>
     </section>

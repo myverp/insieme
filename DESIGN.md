@@ -64,7 +64,7 @@ components:
     textColor: "{colors.forest-deep}"
     rounded: "{rounded.control-sm}"
     padding: "0 14px"
-    height: "40px"
+    height: "44px"
   input:
     backgroundColor: "{colors.field-white}"
     textColor: "{colors.ink}"
@@ -187,7 +187,7 @@ The component language is friendly and tactile: generous enough to invite touch,
 
 ### Buttons
 
-- **Shape:** Soft rectangular controls, generally 8–10px corners and 38–46px high.
+- **Shape:** Soft rectangular controls, generally 8–10px corners. Recurring mobile controls have a minimum 44px touch height.
 - **Primary:** Forest fill with white text and confident 700–750 weight.
 - **Hover / Focus:** Darken the forest fill on hover; use the global high-visibility focus outline for keyboard access.
 - **Secondary:** Forest Mist fill with Deep Forest Ink text and a quiet green border.
@@ -195,7 +195,7 @@ The component language is friendly and tactile: generous enough to invite touch,
 
 ### Chips
 
-- **Style:** Compact pill geometry with Warm Paper or Forest Mist backgrounds and 10–12px semibold text.
+- **Style:** Compact pill geometry with Warm Paper or Forest Mist backgrounds. Member roles and other meaningful labels use at least 12px semibold text.
 - **State:** Selected and removable filters use the green family; passive film metadata stays neutral.
 
 ### Cards / Containers
@@ -209,7 +209,7 @@ The component language is friendly and tactile: generous enough to invite touch,
 ### Inputs / Fields
 
 - **Style:** Crisp white field, warm-gray border, 9–11px corners, and 42–48px height.
-- **Focus:** Forest border with a translucent 3px green ring.
+- **Focus:** Forest border with a solid Deep Forest Ink outline, offset from the control. Do not rely on a translucent ring alone.
 - **Error / Disabled:** Error copy and outlines use muted danger red; disabled controls retain their shape and lower opacity.
 
 ### Navigation
@@ -218,7 +218,17 @@ Header controls use cream surfaces, quiet borders, semibold labels, and the same
 
 ### Film Card
 
-The poster is the signature visual element. A card pairs a 2:3 poster with a two-line title, a compact neutral metadata pill, and contextual actions. Desktop actions reveal on hover or keyboard focus; compact mobile cards keep the primary action reachable without expanding the card.
+The poster is the signature visual element. A Watchlist preview pairs a 2:3 poster with a two-line title and compact rating/year metadata. The whole preview opens Film details. Keep Mark watched and removal inside Film details on desktop and mobile; do not duplicate them on previews or reserve empty space for those controls.
+
+### Discovery and Shared Context
+
+Show the current Watchlist name and its Private label above search. Once membership data loads, show the real Member count and up to four initials avatars, with an overflow count for larger groups. Never present a fallback Member count as confirmed data.
+
+Show four results initially, with Show more films revealing four more. Use four columns on desktop, two on mobile, and one on narrow phones. The persistent View Watchlist action includes the film count and names the current Watchlist instead of displaying a generic slogan.
+
+### Watchlist Management
+
+Keep switching, Members, and Invite visible. Place rename and lifecycle controls in a collapsed Watchlist settings section at the end, with deletion last.
 
 ### Dialog and Bottom Sheet
 
