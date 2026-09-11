@@ -222,17 +222,21 @@ The poster is the signature visual element. A Watchlist preview pairs a 2:3 post
 
 ### Discovery and Shared Context
 
-Show the current Watchlist name and its Private label above search. Once membership data loads, show the real Member count and up to four initials avatars, with an overflow count for larger groups. Never present a fallback Member count as confirmed data.
+Show the current Watchlist name above search. Once membership data loads, show up to four initials avatars, with an overflow count for larger groups. Keep privacy and Member-count copy off the Discovery surface; membership details remain available in management.
 
-Show four results initially, with Show more films revealing four more. Use four columns on desktop, two on mobile, and one on narrow phones. The persistent View Watchlist action includes the film count and names the current Watchlist instead of displaying a generic slogan.
+Show four results initially, with Show more films revealing four more. Use four columns on desktop, two on mobile, and one on narrow phones. Show View Watchlist only when search results separate Discovery from the shortlist. Omit the bridge at rest, while loading, and for empty results. Label both title and filtered search actions Search.
+
+For imported films whose rating source is unknown, show the year without a legacy score. Never relabel an unknown score as TMDb or IMDb. Film details can show verified ratings when available.
 
 ### Watchlist Management
 
-Keep switching, Members, and Invite visible. Place rename and lifecycle controls in a collapsed Watchlist settings section at the end, with deletion last.
+Keep switching, Members, and Invite visible. Collapse Create a new Watchlist by default. Place rename and lifecycle controls in a collapsed Watchlist settings section at the end, with deletion last.
 
 ### Dialog and Bottom Sheet
 
 Desktop dialogs are centered cream surfaces with a dark translucent backdrop. At mobile widths they dock to the bottom edge, gain a 24px top radius and handle, and keep actions full-width where space requires it.
+
+Film facts wrap naturally across available space, separated from surrounding content by quiet rules. Avoid a rigid table that leaves empty cells when facts are missing.
 
 ## Do's and Don'ts
 

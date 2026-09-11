@@ -186,7 +186,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
         </summary>
         <FilterFields filters={filters} updateFilter={updateFilter} />
         <div className="advanced-actions">
-          <button type="button" className="filter-search-button" onClick={() => void searchMovies()} disabled={loading}>Apply filters</button>
+          <button type="button" className="filter-search-button" onClick={() => void searchMovies()} disabled={loading}>Search</button>
           {activeFilterCount ? <button type="button" className="reset-filters" onClick={resetFilters}>Reset</button> : null}
         </div>
       </details>
@@ -216,7 +216,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
                 void searchMovies();
               }}
             >
-              Apply filters
+              Search
             </button>
             {activeFilterCount ? <button type="button" className="reset-filters" onClick={resetFilters}>Reset</button> : null}
           </div>

@@ -697,10 +697,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             </ul>
           </section>
 
-          <section className="manager-section manager-create-section" aria-labelledby="new-watchlist-title">
+          <details className="manager-section manager-settings manager-create-section">
+            <summary>Create a new Watchlist</summary>
             <div className="manager-section-heading">
               <div>
-                <h3 id="new-watchlist-title">Create a new Watchlist</h3>
                 <p>Start a separate list for another group or mood.</p>
               </div>
             </div>
@@ -726,7 +726,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                 </button>
               </div>
             </form>
-          </section>
+          </details>
           <details className="manager-section manager-settings" key={watchlistId}>
             <summary>Watchlist settings</summary>
             <div className="manager-section-heading">
