@@ -554,7 +554,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                         <Poster movie={movie} size="card" />
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
-                          <span className="film-meta">{movie.year || "Year unknown"} · {formatMovieRating(movie)}</span>
+                          <span className="film-meta">{movie.year || "Year unknown"}{movie.ratingSource !== "legacy" ? ` · ${formatMovieRating(movie)}` : ""}</span>
                         </span>
                       </button>
                     </li>
@@ -1102,7 +1102,9 @@ function formatWatchedDate(date: string) {
 function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8 3.5-2.1-1.2.1-2.4-2.4-1.4-2 1.3-2-1.3L7.2 7l-2.4 1.4.1 2.4L2.8 12l2.1 1.2-.1 2.4L7.2 17l2-1.3 2 1.3 2-1.3 2 1.3 2.4-1.4-.1-2.4L20 12Z" />
+      <path d="M4 7h6m4 0h6M4 17h10m4 0h2" />
+      <circle cx="12" cy="7" r="2" />
+      <circle cx="16" cy="17" r="2" />
     </svg>
   );
 }

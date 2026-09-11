@@ -154,7 +154,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
   return (
     <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
       <div className="discovery-context">
-        <div><strong>{watchlistName}</strong><p>Private{members ? ` · ${members.length} ${members.length === 1 ? "Member" : "Members"}` : ""}</p></div>
+        <div><strong>{watchlistName}</strong></div>
         {members ? <ul className="discovery-members" aria-label="Watchlist members">
           {members.slice(0, 4).map((member) => <li key={member.profile.userId} title={member.profile.displayName}><ProfileAvatar displayName={member.profile.displayName} small /><span className="sr-only">{member.profile.displayName}</span></li>)}
           {members.length > 4 ? <li>+{members.length - 4}<span className="sr-only"> more Members</span></li> : null}
@@ -270,10 +270,10 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
         </div>
       ) : null}
       {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 4)}>Show more films</button> : null}
-      <div className="watchlist-bridge">
+      {!loading && results.length > 0 ? <div className="watchlist-bridge">
         <span>{watchlistName}</span>
         <button type="button" onClick={onViewWatchlist}>View Watchlist ({watchlist.length})</button>
-      </div>
+      </div> : null}
     </section>
   );
 }
