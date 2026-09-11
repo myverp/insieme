@@ -7,6 +7,7 @@ import { createClient } from "@/app/lib/supabase/client";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
 import { WatchlistSearch } from "@/app/watchlist-search";
+import { pickFilm } from "@/app/lib/film-picker";
 import type { HistoryMovie, Movie, MovieDetails, Review, WatchlistMember, WatchlistSummary } from "@/app/watchlist-types";
 import { toast } from "sonner";
 import type { FormEvent } from "react";
@@ -21,6 +22,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [history, setHistory] = useState<HistoryMovie[]>([]);
   const [ready, setReady] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [pickerActive, setPickerActive] = useState(false);
+  const pickerCycle = useRef<{ watchlistId: string; seen: number[] }>({ watchlistId, seen: [] });
+  const detailsRequest = useRef(0);
   const [details, setDetails] = useState<MovieDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
@@ -345,7 +349,17 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     }
   }
 
-  async function openDetails(movie: Movie) {
+  function chooseFilm() {
+    const seen = pickerCycle.current.watchlistId === watchlistId ? pickerCycle.current.seen : [];
+    const result = pickFilm(watchlist, seen);
+    if (!result) return;
+    pickerCycle.current = { watchlistId, seen: result.seen };
+    void openDetails(result.film, true);
+  }
+
+  async function openDetails(movie: Movie, fromPicker = false) {
+    const requestId = ++detailsRequest.current;
+    setPickerActive(fromPicker);
     const isWatched = history.some((item) => item.id === movie.id);
     setSelectedMovie(movie);
     setDetails(null);
@@ -362,12 +376,14 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     try {
       const response = await fetch(`/api/movies/${movie.id}`);
       const data = (await response.json()) as { details?: MovieDetails; error?: string };
+      if (requestId !== detailsRequest.current) return;
       if (!response.ok || !data.details) throw new Error(data.error ?? "Film details are unavailable.");
       setDetails(data.details);
     } catch (error) {
+      if (requestId !== detailsRequest.current) return;
       setDetailsError(error instanceof Error ? error.message : "Film details are unavailable.");
     } finally {
-      setDetailsLoading(false);
+      if (requestId === detailsRequest.current) setDetailsLoading(false);
     }
   }
 
@@ -531,6 +547,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               <span className="collapse-arrow" aria-hidden="true" />
             </button>
           </h2>
+          <button className="pick-film-button" type="button" onClick={chooseFilm} disabled={!ready || !watchlist.length || listAction !== null} aria-haspopup="dialog" title={!watchlist.length ? "Add a film to your Watchlist first" : undefined}>
+            {watchlist.length === 1 ? "View our film" : "Pick a film"}
+          </button>
         </div>
 
         <div id="watchlist-content" className={`collapsible-panel${watchlistOpen ? "" : " is-collapsed"}`} aria-hidden={!watchlistOpen} inert={!watchlistOpen}>
@@ -783,10 +802,17 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         {selectedMovie ? (
           <div className="details-content">
             <header className="details-heading">
-              <p>Film details</p>
+              <p>{pickerActive ? "Your Watchlist pick" : "Film details"}</p>
               <h2 id="details-title">{selectedMovie.title}</h2>
               {details?.tagline ? <p className="tagline">{details.tagline}</p> : null}
             </header>
+
+            {pickerActive && watchlist.length > 1 ? (
+              <div className="picker-actions">
+                <p>Every film gets a turn before repeats.</p>
+                <button className="pick-film-button" type="button" onClick={chooseFilm} disabled={detailsLoading}>Pick another</button>
+              </div>
+            ) : null}
 
             {watchlist.some((movie) => movie.id === selectedMovie.id) ? (
               <div className="details-actions">

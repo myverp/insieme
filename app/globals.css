@@ -154,7 +154,11 @@ ul { margin: 0; padding: 0; list-style: none; }
 .result-actions button { min-width: 0; margin: 0; }
 
 .list-section { margin-top: 48px; }
-.list-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 17px; }
+.list-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 17px; }
+.pick-film-button { min-height: 44px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 750; }
+.pick-film-button:hover:not(:disabled) { background: var(--accent-dark); }
+.picker-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.picker-actions p { margin: 0; color: var(--muted); font-size: 13px; }
 .list-heading h2 { min-width: 0; margin: 0; font-family: var(--font-site); font-size: 30px; letter-spacing: -.035em; }
 .list-heading-toggle { display: inline-flex; align-items: center; max-width: 100%; gap: 11px; padding: 3px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
 .list-heading-toggle > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

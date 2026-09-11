@@ -222,6 +222,8 @@ The poster is the signature visual element. A Watchlist preview pairs a 2:3 post
 
 ### Discovery and Shared Context
 
+Place Pick a film beside the Watchlist heading as the decision action. Open the selected film's details directly and offer Pick another there. Cycle through current films without repeats and reset when switching Watchlists. Disable the action for an empty list; label it View our film for a single option. Keep preview cards free of extra actions.
+
 Show the current Watchlist name above search. Once membership data loads, show up to four initials avatars, with an overflow count for larger groups. Keep privacy and Member-count copy off the Discovery surface; membership details remain available in management.
 
 Show four results initially, with Show more films revealing four more. Use four columns on desktop, two on mobile, and one on narrow phones. Show View Watchlist only when search results separate Discovery from the shortlist. Omit the bridge at rest, while loading, and for empty results. Label both title and filtered search actions Search.
