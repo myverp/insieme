@@ -1,11 +1,11 @@
 "use client";
 
-import Image from "next/image";
+import { FilmPoster } from "@/app/film-poster";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { HistoryMovie, Movie, WatchlistMember } from "@/app/watchlist-types";
+import type { HistoryMovie, Movie } from "@/app/watchlist-types";
 
 const GENRES = [
   [28, "Action"], [12, "Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"],
@@ -32,7 +32,7 @@ const EMPTY_FILTERS: SearchFilters = {
 
 type WatchlistSearchProps = {
   watchlistName: string;
-  members: WatchlistMember[] | null;
+  disabled: boolean;
   watchlist: Movie[];
   history: HistoryMovie[];
   inputRef: RefObject<HTMLInputElement | null>;
@@ -40,7 +40,7 @@ type WatchlistSearchProps = {
   onAdd: (movie: Movie) => Promise<void>;
 };
 
-export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, onAdd, onViewWatchlist }: WatchlistSearchProps) {
+export function WatchlistSearch({ watchlistName, watchlist, history, disabled, inputRef, onAdd, onViewWatchlist }: WatchlistSearchProps) {
   const params = useSearchParams();
   const initialParams = useRef(params.toString());
   const [visibleCount, setVisibleCount] = useState(12);
@@ -61,6 +61,7 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Film discovery is unavailable.");
       setResults(data.movies ?? []);
+      setMessage(data.message ?? "");
     }).catch((error) => {
       if (error.name !== "AbortError") { setSearchError(true); setSearchAttempted(true); setMessage(error.message); }
     }).finally(() => { if (!request.signal.aborted) setLoading(false); });
@@ -70,6 +71,9 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
   async function searchMovies(activeFilters = filters, searchQuery = query) {
     const trimmedQuery = searchQuery.trim();
     if (trimmedQuery.length === 1) {
+      searchRequest.current?.abort();
+      searchRequest.current = null;
+      setLoading(false);
       resetResults();
       setMessage("Type at least two characters.");
       return;
@@ -156,7 +160,7 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
 
   return (
     <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
-      <div className="discovery-heading"><div><p className="eyebrow">THE NEXT GOOD FILM</p><h1 id="add-film-heading">Find your next film.</h1><p>Explore the films. Save the possibilities. Watch together.</p></div><span className="catalog-label">THE INSIEME FILM INDEX</span></div>
+      <div className="discovery-heading"><div><p className="eyebrow">DISCOVER</p><h1 id="add-film-heading">Find your next film.</h1></div></div>
       <label className="sr-only" htmlFor="film-search">Search by title</label>
       <form className="search-row" onSubmit={(event) => { event.preventDefault(); void searchMovies(); }}>
         <div className="search-input-wrap">
@@ -175,17 +179,13 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
         <button type="submit" disabled={loading}>{loading ? "Searching…" : "Search"}</button>
       </form>
 
-      <details open className="advanced-search desktop-advanced-search">
-        <summary>
-          <span>Filter films</span>
-          {activeFilterCount ? <span className="filter-count">{activeFilterCount}</span> : null}
-        </summary>
+      <div className="advanced-search desktop-advanced-search" aria-label="Film filters">
         <FilterFields filters={filters} updateFilter={updateFilter} />
         <div className="advanced-actions">
           <button type="button" className="filter-search-button" onClick={() => void searchMovies()} disabled={loading}>Search</button>
           {activeFilterCount ? <button type="button" className="reset-filters" onClick={resetFilters}>Reset</button> : null}
         </div>
-      </details>
+      </div>
 
       <button className="mobile-filter-button" type="button" onClick={() => filterDialog.current?.showModal()}>
         <FilterIcon />
@@ -199,7 +199,6 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
           <header className="details-heading">
             <p>Discovery</p>
             <h2 id="filter-dialog-title">Filter films</h2>
-            <p className="tagline">Narrow the results without losing your place.</p>
           </header>
           <FilterFields filters={filters} updateFilter={updateFilter} />
           <div className="advanced-actions">
@@ -235,20 +234,20 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
           <div className="results-heading"><h2>{searchAttempted ? "Search results" : "Popular films"}</h2>{results.length ? <span aria-live="polite">{Math.min(visibleCount, results.length)} of {results.length} found</span> : null}</div>
           {loading ? <SearchSkeleton /> : results.length ? (
             <ul className="search-results" aria-label="Film results">
-              {results.slice(0, visibleCount).map((movie) => {
+              {results.slice(0, visibleCount).map((movie, index) => {
                 const added = watchlist.some((item) => item.id === movie.id);
                 const watched = history.some((item) => item.id === movie.id);
                 return (
                   <li className="group" key={movie.id}>
                     <Link className="result-details-trigger" href={`/films/${movie.id}?from=${encodeURIComponent("/?" + params.toString())}`} aria-label={`View details for ${movie.title}`} prefetch={false}>
-                      <SearchPoster movie={movie} />
+                      <FilmPoster movie={movie} eager={index < 6} />
                       <span className="result-info">
                         <strong title={movie.title}>{movie.title}</strong>
                         <span>{movie.year || "Year unknown"} · TMDb {formatRating(movie.rating)}</span>
                       </span>
                     </Link>
                     <div className="result-actions">
-                      <button type="button" onClick={() => void onAdd(movie)} disabled={added || watched}>
+                      <button type="button" onClick={() => void onAdd(movie)} disabled={disabled || added || watched}>
                         {watched ? "Watched" : added ? "Added" : "+ Watchlist"}
                       </button>
                     </div>
@@ -328,15 +327,11 @@ function FilterIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>;
 }
 
-function SearchPoster({ movie }: { movie: Movie }) {
-  if (!movie.poster) return <span className="poster-placeholder poster-card" aria-label="No poster available">No poster</span>;
-  return <Image className="poster poster-card" src={movie.poster} alt={`${movie.title} poster`} width={342} height={513} sizes="(max-width: 700px) 46vw, (max-width: 1000px) 23vw, 16vw" />;
-}
 
 function SearchSkeleton() {
   return (
     <ul className="search-results film-grid-skeleton" aria-label="Loading film results">
-      {Array.from({ length: 5 }, (_, index) => <li className="skeleton-card" key={index}><span className="skeleton-poster" /><span className="skeleton-lines"><i /><i /></span></li>)}
+      {Array.from({ length: 6 }, (_, index) => <li className="skeleton-card" key={index}><span className="skeleton-poster" /><span className="skeleton-lines"><i /><i /></span></li>)}
     </ul>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { FilmPoster } from "@/app/film-poster";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
@@ -33,6 +34,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [history, setHistory] = useState<HistoryMovie[]>([]);
   const [ready, setReady] = useState(false);
+  const [watchlistError, setWatchlistError] = useState("");
+  const [mutationPending, setMutationPending] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(initialMovie);
   const [pickerActive, setPickerActive] = useState(false);
   const pickerCycle = useRef<{ watchlistId: string; seen: number[] }>({ watchlistId, seen: [] });
@@ -50,6 +53,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
   const [membersLoadedFor, setMembersLoadedFor] = useState<string | null>(null);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | "rename" | "lifecycle" | null>(null);
   const [newListName, setNewListName] = useState("");
+  const [invitationUrl, setInvitationUrl] = useState("");
   const [renameListName, setRenameListName] = useState(currentWatchlist?.name ?? "");
   const [legacyMovies, setLegacyMovies] = useState<Movie[]>([]);
   const [legacyImporting, setLegacyImporting] = useState(false);
@@ -60,7 +64,12 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
   const managerDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (joined) toast.success("You joined the Watchlist.");
+    if (joined) {
+      toast.success("You joined the Watchlist.", { id: "joined-watchlist" });
+      const url = new URL(window.location.href);
+      url.searchParams.delete("joined");
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
   }, [joined]);
 
   useEffect(() => {
@@ -83,6 +92,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
     const response = await fetch(`/api/watchlist?selected=${encodeURIComponent(watchlistId)}`, { cache: "no-store" });
     const data = (await response.json()) as { movies?: Movie[]; history?: HistoryMovie[]; error?: string };
     if (!response.ok) throw new Error(data.error ?? "The shared watchlist is unavailable.");
+    setWatchlistError("");
     setWatchlist(data.movies ?? []);
     setHistory(data.history ?? []);
     return { movies: data.movies ?? [], history: data.history ?? [] };
@@ -112,7 +122,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
           }
         }
       } catch (error) {
-        if (!cancelled) toast.error(error instanceof Error ? error.message : "The shared watchlist is unavailable.");
+        if (!cancelled) setWatchlistError(error instanceof Error ? error.message : "The Watchlist could not be loaded.");
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -125,22 +135,33 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
   useEffect(() => {
     if (!ready) return;
     const supabase = createClient();
+    let refreshing = false;
+    let disposed = false;
+    const refresh = async () => {
+      if (disposed || refreshing || document.visibilityState === "hidden") return;
+      refreshing = true;
+      try { await refreshWatchlist(); }
+      catch { toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" }); }
+      finally { refreshing = false; }
+    };
     const channel = supabase
       .channel(`insieme-watchlist-${watchlistId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "watchlist_movies", filter: `watchlist_id=eq.${watchlistId}` }, () => {
-        void refreshWatchlist().catch(() => {
-          toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" });
-        });
+        void refresh();
       })
-      .subscribe();
+      .subscribe((status) => { if (status === "SUBSCRIBED") void refresh(); });
 
-    const refreshOnFocus = () => void refreshWatchlist().catch(() => {
-      toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" });
-    });
+    const refreshOnFocus = () => void refresh();
     window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    // Recover missed events and disconnected sockets without requiring a reload.
+    const recovery = window.setInterval(refreshOnFocus, 15000);
 
     return () => {
+      disposed = true;
+      window.clearInterval(recovery);
       window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
       void supabase.removeChannel(channel);
     };
   }, [ready, refreshWatchlist, watchlistId]);
@@ -196,8 +217,13 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
       });
       const data = (await response.json()) as { url?: string; error?: string };
       if (!response.ok || !data.url) throw new Error(data.error ?? "The invitation link could not be created.");
-      await navigator.clipboard.writeText(data.url);
-      toast.success("Invitation link copied.");
+      setInvitationUrl(data.url);
+      try {
+        await navigator.clipboard.writeText(data.url);
+        toast.success("Invitation link copied.");
+      } catch {
+        toast("Invitation ready. Select and copy the link below.");
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The invitation link could not be copied.");
     } finally {
@@ -283,9 +309,11 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
   }
 
   async function addMovie(movie: Movie) {
+    if (!ready || watchlistError || mutationPending) return;
     const alreadyAdded = watchlist.some((item) => item.id === movie.id) || history.some((item) => item.id === movie.id);
     if (alreadyAdded) return;
 
+    setMutationPending(true);
     setWatchlist((current) => [...current, movie]);
     try {
       await saveMovie(movie);
@@ -294,10 +322,12 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
       setWatchlist((current) => current.filter((item) => item.id !== movie.id));
       const errorMessage = error instanceof Error ? error.message : "The film could not be added.";
       toast.error(errorMessage);
-    }
+    } finally { setMutationPending(false); }
   }
 
   async function markWatched(movie: Movie) {
+    if (mutationPending || watchlistError) return;
+    setMutationPending(true);
     setWatchlist((current) => current.filter((item) => item.id !== movie.id));
     try {
       const watchedAt = await markMovieWatched(movie.id);
@@ -307,16 +337,18 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
       const errorMessage = error instanceof Error ? error.message : "The film could not be marked as watched.";
       toast.error(errorMessage);
       void refreshWatchlist().catch(() => toast.error("The Watchlist could not be refreshed.", { id: "watchlist-refresh" }));
-    }
+    } finally { setMutationPending(false); }
   }
 
   function removeMovie(movie: Movie) {
+    if (mutationPending || watchlistError) return;
     const originalIndex = watchlist.findIndex((item) => item.id === movie.id);
     if (originalIndex < 0) return;
 
     let undoRequested = false;
     setWatchlist((current) => current.filter((item) => item.id !== movie.id));
-    const removalRequest = deleteMovie(movie.id);
+    setMutationPending(true);
+    const removalRequest = deleteMovie(movie.id).finally(() => setMutationPending(false));
 
     toast(`Removed “${movie.title}”`, {
       description: "Changed your mind? Put it back on the shared list.",
@@ -500,7 +532,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
             </header>
 
             <div className="film-hero">
-              <Poster movie={selectedMovie} size="card" />
+              <FilmPoster movie={selectedMovie} eager />
               {details?.backdrops[0] ? <Image className="film-backdrop" src={details.backdrops[0]} alt={`Scene from ${selectedMovie.title}`} width={1280} height={720} sizes="(max-width: 700px) 66vw, 70vw" loading="eager" /> : <div className="film-hero-summary"><p>{selectedMovie.overview}</p></div>}
             </div>
             {pickerActive && watchlist.length > 1 ? (
@@ -511,11 +543,12 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
             ) : null}
 
             <p className="film-list-context">Saving to <strong>{currentWatchlist.name}</strong>{pageFilmWatched ? " · Watched" : ""}</p>
-            {!watchlist.some((movie) => movie.id === selectedMovie.id) && !history.some((movie) => movie.id === selectedMovie.id) ? <div className="details-actions"><button className="details-watched-button" type="button" disabled={!ready} onClick={() => void addMovie(selectedMovie)}>Add to Watchlist</button></div> : null}
+            {!watchlist.some((movie) => movie.id === selectedMovie.id) && !history.some((movie) => movie.id === selectedMovie.id) ? <div className="details-actions"><button className="details-watched-button" type="button" disabled={!ready || Boolean(watchlistError) || mutationPending} onClick={() => void addMovie(selectedMovie)}>Add to Watchlist</button></div> : null}
             {watchlist.some((movie) => movie.id === selectedMovie.id) ? (
               <div className="details-actions">
                 <button
                   className="details-watched-button"
+                  disabled={mutationPending || Boolean(watchlistError)}
                   type="button"
                   onClick={() => {
                     detailsDialog.current?.close();
@@ -526,6 +559,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
                 </button>
                 <button
                   className="details-remove-button"
+                  disabled={mutationPending || Boolean(watchlistError)}
                   type="button"
                   onClick={() => {
                     detailsDialog.current?.close();
@@ -650,9 +684,11 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
           </div>
         </div>
 </div>
-        <div className="shared-context-members"><div className="discovery-members">{membersLoadedFor === watchlistId ? members.slice(0, 4).map((member) => <ProfileAvatar key={member.profile.userId} displayName={member.profile.displayName} small />) : null}</div><span>{membersLoadedFor === watchlistId ? `${members.length} ${members.length === 1 ? "member" : "members"}` : "Loading members…"}</span><button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>{listAction === "invite" ? "Copying…" : "Invite a friend"}</button></div>
+        <div className="shared-context-members"><div className="discovery-members">{membersLoadedFor === watchlistId ? members.slice(0, 4).map((member) => <span key={member.profile.userId} title={member.profile.displayName}><ProfileAvatar displayName={member.profile.displayName} small /><span className="sr-only">{member.profile.displayName}</span></span>) : null}</div><span>{membersLoadedFor === watchlistId ? `${members.length} ${members.length === 1 ? "member" : "members"}` : "Loading members…"}</span><button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>{listAction === "invite" ? "Copying…" : "Invite a friend"}</button></div>
       </section>
 
+      {invitationUrl ? <div className="invitation-link" role="status"><label>Invitation link<input value={invitationUrl} readOnly onFocus={(event) => event.currentTarget.select()} /></label><p>Anyone with this private link can join {currentWatchlist.name}.</p><button type="button" onClick={() => setInvitationUrl("")}>Dismiss</button></div> : null}
+      {watchlistError ? <div className="load-error" role="alert"><p>{watchlistError} Your saved films have not been changed.</p><button type="button" onClick={() => void refreshWatchlist().catch((error) => setWatchlistError(error.message))}>Retry</button></div> : null}
       {legacyMovies.length ? (
         <section className="legacy-import" aria-labelledby="legacy-import-title">
           <div>
@@ -674,7 +710,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
       <div hidden={Boolean(film) || view !== "discover"}>
       {!film ? <WatchlistSearch
         watchlistName={currentWatchlist?.name ?? "Watchlist"}
-        members={membersLoadedFor === watchlistId ? members : null}
+        disabled={!ready || Boolean(watchlistError) || mutationPending}
         watchlist={watchlist}
         history={history}
         inputRef={searchInput}
@@ -704,7 +740,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
               <span className="collapse-arrow" aria-hidden="true" />
             </button>
           </h2>
-          <button className="pick-film-button" type="button" onClick={chooseFilm} disabled={!ready || !watchlist.length || listAction !== null} aria-haspopup="dialog" title={!watchlist.length ? "Add a film to your Watchlist first" : undefined}>
+          <button className="pick-film-button" type="button" onClick={chooseFilm} disabled={!ready || Boolean(watchlistError) || mutationPending || !watchlist.length || listAction !== null} aria-haspopup="dialog" title={!watchlist.length ? "Add a film to your Watchlist first" : undefined}>
             {watchlist.length === 1 ? "View our film" : "Pick a film"}
           </button>
         </div>
@@ -713,7 +749,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
           <div className="collapsible-inner">
             {!ready ? (
               <FilmGridSkeleton count={4} />
-            ) : watchlist.length ? (
+            ) : watchlistError ? null : watchlist.length ? (
               <ul className="film-grid">
                 {watchlist.map((movie) => (
                     <li
@@ -725,7 +761,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
                         href={filmHref(movie.id)}
                         aria-label={`View details for ${movie.title}`}
                       >
-                        <Poster movie={movie} size="card" />
+                        <FilmPoster movie={movie} />
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
                           <span className="film-meta">{movie.year || "Year unknown"}{movie.ratingSource !== "legacy" ? ` · ${formatMovieRating(movie)}` : ""}</span>
@@ -765,7 +801,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
 
         <div id="history-content" className={`collapsible-panel${historyOpen ? "" : " is-collapsed"}`} aria-hidden={!historyOpen} inert={!historyOpen}>
           <div className="collapsible-inner">
-            {history.length ? (
+            {watchlistError ? null : history.length ? (
               <ul className="film-grid history-grid">
                 {history.map((movie) => (
                     <li
@@ -777,7 +813,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
                         href={filmHref(movie.id)}
                         aria-label={`View details for ${movie.title}`}
                       >
-                        <Poster movie={movie} size="card" />
+                        <FilmPoster movie={movie} />
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
                           <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
@@ -1169,23 +1205,5 @@ function ListIcon() {
       <circle cx="4" cy="18" r="1" fill="currentColor" />
       <path d="M8 6h12M8 12h12M8 18h12" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
     </svg>
-  );
-}
-
-function Poster({ movie, size }: { movie: Movie; size: "card" }) {
-  const dimensions = { width: 342, height: 513 };
-  if (!movie.poster) {
-    return <span className={`poster-placeholder poster-${size}`} aria-label="No poster available">No poster</span>;
-  }
-
-  return (
-    <Image
-      className={`poster poster-${size}`}
-      src={movie.poster}
-      alt={`${movie.title} poster`}
-      width={dimensions.width}
-      height={dimensions.height}
-      sizes="(max-width: 700px) 104px, (max-width: 950px) 33vw, 25vw"
-    />
   );
 }

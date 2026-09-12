@@ -32,6 +32,10 @@ Primary actions are amber; secondary actions are neutral. Dangerous actions use 
 
 Use native buttons, links, selects and dialogs. Visible focus uses a solid three-pixel outline. Dialogs retain Escape dismissal and focus return. Mobile controls have at least 44px targets where practical, input text is 16px to avoid zoom, and content wraps without horizontal scrolling. Respect prefers-reduced-motion.
 
+Film search and filters live in the URL. Film-page return links restore that context, and authentication preserves supported film and discovery destinations. Show the generated invitation link in a selectable field; copying it is a convenience rather than the only way to invite a Member. Prevent conflicting film mutations while a request is pending.
+
+Keep shared lists current with realtime events, a refresh after subscription, focus/visibility recovery and a 15-second refresh while the page is visible. A failed initial Watchlist request gets a retry state, never an empty-list claim. Poster failures get a labeled fallback. Verification and current limits are recorded in `docs/validation/catalog-redesign.md`.
+
 ## Data and content rules
 
 Use Film, Watchlist, Member, Owner, Invitation, Watched history and Review as defined in CONTEXT.md. Do not introduce a separate personal/shared list data type. An invitation is a private membership link.
