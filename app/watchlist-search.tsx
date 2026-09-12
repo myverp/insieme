@@ -4,7 +4,6 @@ import Image from "next/image";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { HistoryMovie, Movie, WatchlistMember } from "@/app/watchlist-types";
-import { ProfileAvatar } from "@/app/profile/avatar";
 
 const GENRES = [
   [28, "Action"], [12, "Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"],
@@ -40,34 +39,33 @@ type WatchlistSearchProps = {
   onOpenDetails: (movie: Movie) => Promise<void>;
 };
 
-export function WatchlistSearch({ watchlistName, members, watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
-  const [visibleCount, setVisibleCount] = useState(4);
+export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
+  const [visibleCount, setVisibleCount] = useState(12);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
   const [results, setResults] = useState<Movie[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [searchAttempted, setSearchAttempted] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const searchRequest = useRef<AbortController | null>(null);
   const filterDialog = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => () => searchRequest.current?.abort(), []);
+  useEffect(() => {
+    const request = new AbortController();
+    searchRequest.current = request;
+    fetch("/api/movies", { signal: request.signal }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Film discovery is unavailable.");
+      setResults(data.movies ?? []);
+    }).catch((error) => {
+      if (error.name !== "AbortError") { setSearchError(true); setSearchAttempted(true); setMessage(error.message); }
+    }).finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => searchRequest.current?.abort();
+  }, []);
 
   async function searchMovies(activeFilters = filters) {
     const trimmedQuery = query.trim();
-    const hasFilters = Boolean(
-      activeFilters.genre
-      || activeFilters.director.trim()
-      || activeFilters.decade
-      || activeFilters.minRating
-      || activeFilters.sort !== EMPTY_FILTERS.sort
-    );
-
-    if (!trimmedQuery && !hasFilters) {
-      resetResults();
-      return;
-    }
     if (trimmedQuery.length === 1) {
       resetResults();
       setMessage("Type at least two characters.");
@@ -88,7 +86,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
       const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string };
       if (!response.ok) throw new Error(data.error ?? "Film search is unavailable.");
       setResults(data.movies ?? []);
-      setVisibleCount(4);
+      setVisibleCount(12);
       setMessage(data.movies?.length ? (data.message ?? "") : (data.message || "No films found."));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -153,14 +151,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
 
   return (
     <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
-      <div className="discovery-context">
-        <div><strong>{watchlistName}</strong></div>
-        {members ? <ul className="discovery-members" aria-label="Watchlist members">
-          {members.slice(0, 4).map((member) => <li key={member.profile.userId} title={member.profile.displayName}><ProfileAvatar displayName={member.profile.displayName} small /><span className="sr-only">{member.profile.displayName}</span></li>)}
-          {members.length > 4 ? <li>+{members.length - 4}<span className="sr-only"> more Members</span></li> : null}
-        </ul> : null}
-      </div>
-      <h2 id="add-film-heading">Add a film</h2>
+      <div className="discovery-heading"><div><p className="eyebrow">THE NEXT GOOD FILM</p><h1 id="add-film-heading">Find your next film.</h1><p>Explore the films. Save the possibilities. Watch together.</p></div><span className="catalog-label">THE INSIEME FILM INDEX</span></div>
       <label className="sr-only" htmlFor="film-search">Search by title</label>
       <form className="search-row" onSubmit={(event) => { event.preventDefault(); void searchMovies(); }}>
         <div className="search-input-wrap">
@@ -179,9 +170,9 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
         <button type="submit" disabled={loading}>{loading ? "Searching…" : "Search"}</button>
       </form>
 
-      <details className="advanced-search desktop-advanced-search">
+      <details open className="advanced-search desktop-advanced-search">
         <summary>
-          <span>Advanced search</span>
+          <span>Filter films</span>
           {activeFilterCount ? <span className="filter-count">{activeFilterCount}</span> : null}
         </summary>
         <FilterFields filters={filters} updateFilter={updateFilter} />
@@ -236,9 +227,9 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
       {message && !loading ? <p className="status" role="status">{message}</p> : null}
       {loading || results.length || searchAttempted ? (
         <div className="results-block">
-          <div className="results-heading"><h3>Search results</h3>{results.length ? <span aria-live="polite">{Math.min(visibleCount, results.length)} of {results.length} found</span> : null}</div>
+          <div className="results-heading"><h2>{searchAttempted ? "Search results" : "Popular films"}</h2>{results.length ? <span aria-live="polite">{Math.min(visibleCount, results.length)} of {results.length} found</span> : null}</div>
           {loading ? <SearchSkeleton /> : results.length ? (
-            <ul className="search-results" aria-label="Film search results">
+            <ul className="search-results" aria-label="Film results">
               {results.slice(0, visibleCount).map((movie) => {
                 const added = watchlist.some((item) => item.id === movie.id);
                 const watched = history.some((item) => item.id === movie.id);
@@ -253,7 +244,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
                     </button>
                     <div className="result-actions">
                       <button type="button" onClick={() => void onAdd(movie)} disabled={added || watched}>
-                        {watched ? "Watched" : added ? "Added" : "Add"}
+                        {watched ? "Watched" : added ? "Added" : "+ Watchlist"}
                       </button>
                     </div>
                   </li>
@@ -269,7 +260,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
           )}
         </div>
       ) : null}
-      {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 4)}>Show more films</button> : null}
+      {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 12)}>Show more films</button> : null}
       {!loading && results.length > 0 ? <div className="watchlist-bridge">
         <span>{watchlistName}</span>
         <button type="button" onClick={onViewWatchlist}>View Watchlist ({watchlist.length})</button>
@@ -334,7 +325,7 @@ function FilterIcon() {
 
 function SearchPoster({ movie }: { movie: Movie }) {
   if (!movie.poster) return <span className="poster-placeholder poster-card" aria-label="No poster available">No poster</span>;
-  return <Image className="poster poster-card" src={movie.poster} alt={`${movie.title} poster`} width={342} height={513} sizes="(max-width: 430px) 104px, (max-width: 700px) 50vw, 25vw" />;
+  return <Image className="poster poster-card" src={movie.poster} alt={`${movie.title} poster`} width={342} height={513} sizes="(max-width: 700px) 46vw, (max-width: 1000px) 23vw, 16vw" />;
 }
 
 function SearchSkeleton() {

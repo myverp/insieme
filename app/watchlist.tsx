@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
+import { ThemeToggle } from "@/app/theme-toggle";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
 import { WatchlistSearch } from "@/app/watchlist-search";
@@ -41,8 +42,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [renameListName, setRenameListName] = useState(currentWatchlist?.name ?? "");
   const [legacyMovies, setLegacyMovies] = useState<Movie[]>([]);
   const [legacyImporting, setLegacyImporting] = useState(false);
+  const [view, setView] = useState<"discover" | "watchlist" | "history">("discover");
   const [watchlistOpen, setWatchlistOpen] = useState(true);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(true);
   const searchInput = useRef<HTMLInputElement>(null);
   const detailsDialog = useRef<HTMLDialogElement>(null);
   const managerDialog = useRef<HTMLDialogElement>(null);
@@ -277,7 +279,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     setWatchlist((current) => [...current, movie]);
     try {
       await saveMovie(movie);
-      toast.success(`Added “${movie.title}” to our list ♡`);
+      toast.success(`Added “${movie.title}” to our list`);
     } catch (error) {
       setWatchlist((current) => current.filter((item) => item.id !== movie.id));
       const errorMessage = error instanceof Error ? error.message : "The film could not be added.";
@@ -290,7 +292,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     try {
       const watchedAt = await markMovieWatched(movie.id);
       setHistory((current) => [{ ...movie, watchedAt }, ...current.filter((item) => item.id !== movie.id)]);
-      toast.success(`Marked “${movie.title}” as watched ♡`);
+      toast.success(`Marked “${movie.title}” as watched`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "The film could not be marked as watched.";
       toast.error(errorMessage);
@@ -341,7 +343,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         restored.splice(Math.min(originalIndex, restored.length), 0, movie);
         return restored;
       });
-      toast.success(`“${movie.title}” is back on the list ♡`);
+      toast.success(`“${movie.title}” is back on the list`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "The film could not be restored.";
       toast.error(errorMessage);
@@ -478,8 +480,18 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   return (
     <main className="app-shell">
       <header className="simple-header">
-        <div className="header-brand"><h1><InsiemeLogo /></h1></div>
-        <div className="header-right">
+        <Link href="/" className="header-brand" aria-label="Insieme home"><InsiemeLogo /></Link>
+        <nav className="primary-nav" aria-label="Main navigation">
+          <button type="button" aria-current={view === "discover" ? "page" : undefined} onClick={() => setView("discover")}>Discover</button>
+          <button type="button" aria-current={view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Watchlist <span>{ready ? watchlist.length : "—"}</span></button>
+          <button type="button" aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>History</button>
+        </nav>
+        <ThemeToggle />
+        <Link href="/profile" className="current-profile header-identity"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
+      </header>
+
+      <section className="shared-context" aria-label="Current Watchlist">
+        <div className="shared-context-title"><span className="eyebrow">SAVING TO</span>        <div className="header-right">
           <div className="header-actions">
             <label className="sr-only" htmlFor="watchlist-selector">Current Watchlist</label>
             <select
@@ -491,14 +503,14 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
             <button className="manage-watchlists-button" type="button" onClick={openManager} disabled={listAction !== null}>
-              <SettingsIcon />
-              <span className="manage-label-wide">Manage Watchlists</span>
+              <span className="manage-label-wide">Members & settings</span>
               <span className="manage-label-short">Manage</span>
             </button>
           </div>
         </div>
-        <Link href="/profile" className="current-profile header-identity"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
-      </header>
+</div>
+        <div className="shared-context-members"><div className="discovery-members">{membersLoadedFor === watchlistId ? members.slice(0, 4).map((member) => <ProfileAvatar key={member.profile.userId} displayName={member.profile.displayName} small />) : null}</div><span>{membersLoadedFor === watchlistId ? `${members.length} ${members.length === 1 ? "member" : "members"}` : "Loading members…"}</span><button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>{listAction === "invite" ? "Copying…" : "Invite a friend"}</button></div>
+      </section>
 
       {legacyMovies.length ? (
         <section className="legacy-import" aria-labelledby="legacy-import-title">
@@ -517,6 +529,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         </section>
       ) : null}
 
+      <div hidden={view !== "discover"}>
       <WatchlistSearch
         watchlistName={currentWatchlist?.name ?? "Watchlist"}
         members={membersLoadedFor === watchlistId ? members : null}
@@ -524,6 +537,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         history={history}
         inputRef={searchInput}
         onViewWatchlist={() => {
+          setView("watchlist");
           setWatchlistOpen(true);
           document.getElementById("watchlist-heading")?.focus();
           document.getElementById("watchlist-heading")?.scrollIntoView({ block: "start" });
@@ -531,8 +545,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         onAdd={addMovie}
         onOpenDetails={openDetails}
       />
+      </div>
 
-      <section className="list-section" aria-labelledby="watchlist-heading">
+      <section hidden={view !== "watchlist"} className="list-section" aria-labelledby="watchlist-heading">
+        <p className="eyebrow">YOUR SHARED SHORTLIST</p>
         <div className="list-heading">
           <h2 id="watchlist-heading" tabIndex={-1}>
             <button
@@ -542,7 +558,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               aria-controls="watchlist-content"
               onClick={() => setWatchlistOpen((open) => !open)}
             >
-              <span>Watchlist</span>
+              <span>{currentWatchlist.name}</span>
               {watchlist.length ? <span className="list-count">{watchlist.length}</span> : null}
               <span className="collapse-arrow" aria-hidden="true" />
             </button>
@@ -583,15 +599,15 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               <div className="empty-state">
                 <span className="empty-state-icon empty-state-list-icon" aria-hidden="true"><ListIcon /></span>
                 <strong>Your Watchlist is empty</strong>
-                <span>Search for a film above and add it to your shared list.</span>
-                <button type="button" onClick={() => searchInput.current?.focus()}>Find a film</button>
+                <span>Find something worth watching, then save it here.</span>
+                <button type="button" onClick={() => { setView("discover"); requestAnimationFrame(() => searchInput.current?.focus()); }}>Find a film</button>
               </div>
             )}
           </div>
         </div>
       </section>
 
-      <section className="list-section history-section" aria-labelledby="history-heading">
+      <section hidden={view !== "history"} className="list-section history-section" aria-labelledby="history-heading">
         <div className="list-heading">
           <h2 id="history-heading">
             <button
@@ -1125,15 +1141,7 @@ function formatWatchedDate(date: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date));
 }
 
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 7h6m4 0h6M4 17h10m4 0h2" />
-      <circle cx="12" cy="7" r="2" />
-      <circle cx="16" cy="17" r="2" />
-    </svg>
-  );
-}
+
 
 function ListIcon() {
   return (

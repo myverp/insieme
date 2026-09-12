@@ -32,15 +32,11 @@ export async function GET(request: NextRequest) {
   const requestedSort = params.get("sort") ?? "popularity.desc";
   const sort = allowedSorts.has(requestedSort) ? requestedSort : "popularity.desc";
   const token = process.env.TMDB_READ_TOKEN;
-  const hasFilters = Boolean(director || genre || decade || minRating || sort !== "popularity.desc");
 
   if (rawMinRating && (!Number.isFinite(Number(rawMinRating)) || minRating < 0 || minRating > 10)) {
     return NextResponse.json({ error: "Minimum TMDb score must be between 0 and 10." }, { status: 400 });
   }
 
-  if ((!query || query.length < 2) && !hasFilters) {
-    return NextResponse.json({ error: "Enter a title or choose at least one filter." }, { status: 400 });
-  }
   if (query.length === 1) {
     return NextResponse.json({ error: "Enter at least two characters." }, { status: 400 });
   }

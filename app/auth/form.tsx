@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { InsiemeLogo } from "@/app/logo";
+import { ThemeToggle } from "@/app/theme-toggle";
 
 type AuthFormProps = {
   title: string;
@@ -15,8 +16,9 @@ type AuthFormProps = {
 export function AuthForm({ title, action, submitLabel, error, message, next, showDisplayName = false, children }: AuthFormProps) {
   return (
     <main className="auth-shell">
+      <aside className="auth-intro"><div className="auth-brand"><InsiemeLogo /></div><p className="eyebrow">FILMS, TOGETHER</p><h2>A good film.<br />Better company.</h2><p>Discover your next film. Keep a Watchlist together. Make a night of it.</p><ThemeToggle /></aside>
       <section className="auth-card">
-        <div className="auth-brand"><InsiemeLogo /></div>
+        <p className="eyebrow">YOUR NEXT FILM STARTS HERE</p>
         <h1>{title}</h1>
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         {message ? <p className="auth-message" role="status">{message}</p> : null}
