@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
 import { ThemeToggle } from "@/app/theme-toggle";
 import { InsiemeLogo } from "@/app/logo";
@@ -16,17 +16,28 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 const STORAGE_KEY = "insieme-simple-watchlist-v1";
 
-export default function Watchlist({ watchlists, watchlistId, joined, profile }: { watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean; profile: Profile }) {
+export default function Watchlist({ watchlists, watchlistId, joined, profile, film, returnTo = "/" }: { film?: MovieDetails; returnTo?: string; watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean; profile: Profile }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedView = searchParams.get("view");
+  const view = requestedView === "watchlist" || requestedView === "history" ? requestedView : "discover";
+  function setView(nextView: "discover" | "watchlist" | "history") {
+    const params = new URLSearchParams(film ? "" : searchParams.toString());
+    params.set("view", nextView);
+    if (film) router.push(`/?${params}`);
+    else window.history.pushState(null, "", `/?${params}`);
+  }
+  const filmHref = (id: number) => `/films/${id}?from=${encodeURIComponent("/?" + searchParams.toString())}`;
+  const initialMovie: Movie | null = film ? { id: film.id, title: film.title, year: film.releaseDate.slice(0, 4), poster: film.poster, overview: film.overview, rating: film.tmdbRating, ratingSource: "tmdb" } : null;
   const currentWatchlist = watchlists.find((item) => item.id === watchlistId) ?? watchlists[0];
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [history, setHistory] = useState<HistoryMovie[]>([]);
   const [ready, setReady] = useState(false);
-  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(initialMovie);
   const [pickerActive, setPickerActive] = useState(false);
   const pickerCycle = useRef<{ watchlistId: string; seen: number[] }>({ watchlistId, seen: [] });
   const detailsRequest = useRef(0);
-  const [details, setDetails] = useState<MovieDetails | null>(null);
+  const [details, setDetails] = useState<MovieDetails | null>(film ?? null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState("");
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -42,7 +53,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [renameListName, setRenameListName] = useState(currentWatchlist?.name ?? "");
   const [legacyMovies, setLegacyMovies] = useState<Movie[]>([]);
   const [legacyImporting, setLegacyImporting] = useState(false);
-  const [view, setView] = useState<"discover" | "watchlist" | "history">("discover");
   const [watchlistOpen, setWatchlistOpen] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(true);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -360,6 +370,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   }
 
   async function openDetails(movie: Movie, fromPicker = false) {
+    if (!fromPicker) { router.push(filmHref(movie.id)); return; }
     const requestId = ++detailsRequest.current;
     setPickerActive(fromPicker);
     const isWatched = history.some((item) => item.id === movie.id);
@@ -389,7 +400,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     }
   }
 
-  async function loadReviews(filmId: number) {
+  const loadReviews = useCallback(async (filmId: number) => {
     setReviewsLoading(true);
     setReviewsError("");
     try {
@@ -416,7 +427,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     } finally {
       setReviewsLoading(false);
     }
-  }
+  }, []);
+
+  const pageFilmWatched = Boolean(film && history.some((movie) => movie.id === film.id));
+  useEffect(() => { if (film && pageFilmWatched) void loadReviews(film.id); }, [film, pageFilmWatched, loadReviews]);
 
   async function saveReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -477,17 +491,144 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     }
   }
 
+  const filmContent = selectedMovie ? (
+          <div className="details-content">
+            <header className="details-heading">
+              <p>{pickerActive ? "Your Watchlist pick" : "Film details"}</p>
+              {film ? <h1 id="details-title">{selectedMovie.title}</h1> : <h2 id="details-title">{selectedMovie.title}</h2>}
+              {details?.tagline ? <p className="tagline">{details.tagline}</p> : null}
+            </header>
+
+            <div className="film-hero">
+              <Poster movie={selectedMovie} size="card" />
+              {details?.backdrops[0] ? <Image className="film-backdrop" src={details.backdrops[0]} alt={`Scene from ${selectedMovie.title}`} width={1280} height={720} sizes="(max-width: 700px) 66vw, 70vw" loading="eager" /> : <div className="film-hero-summary"><p>{selectedMovie.overview}</p></div>}
+            </div>
+            {pickerActive && watchlist.length > 1 ? (
+              <div className="picker-actions">
+                <p>Every film gets a turn before repeats.</p>
+                <button className="pick-film-button" type="button" onClick={chooseFilm} disabled={detailsLoading}>Pick another</button>
+              </div>
+            ) : null}
+
+            <p className="film-list-context">Saving to <strong>{currentWatchlist.name}</strong>{pageFilmWatched ? " · Watched" : ""}</p>
+            {!watchlist.some((movie) => movie.id === selectedMovie.id) && !history.some((movie) => movie.id === selectedMovie.id) ? <div className="details-actions"><button className="details-watched-button" type="button" disabled={!ready} onClick={() => void addMovie(selectedMovie)}>Add to Watchlist</button></div> : null}
+            {watchlist.some((movie) => movie.id === selectedMovie.id) ? (
+              <div className="details-actions">
+                <button
+                  className="details-watched-button"
+                  type="button"
+                  onClick={() => {
+                    detailsDialog.current?.close();
+                    void markWatched(selectedMovie);
+                  }}
+                >
+                  Mark as watched
+                </button>
+                <button
+                  className="details-remove-button"
+                  type="button"
+                  onClick={() => {
+                    detailsDialog.current?.close();
+                    removeMovie(selectedMovie);
+                  }}
+                >
+                  Remove from Watchlist
+                </button>
+              </div>
+            ) : null}
+
+            {detailsLoading ? <div className="details-state" role="status"><span className="details-spinner" aria-hidden="true" />Loading film details…</div> : null}
+            {detailsError ? <p className="details-state details-error" role="alert">{detailsError}</p> : null}
+
+            {details ? (
+              <>
+                <dl className="details-facts">
+                  {details.releaseDate ? <div><dt>Released</dt><dd>{formatDate(details.releaseDate)}</dd></div> : null}
+                  {details.runtime ? <div><dt>Runtime</dt><dd>{formatRuntime(details.runtime)}</dd></div> : null}
+                  {details.tmdbRating ? <div><dt>TMDb score</dt><dd>{details.tmdbRating.toFixed(1)} / 10</dd></div> : null}
+                  {details.imdbRating ? <div><dt>IMDb rating</dt><dd>{details.imdbRating.toFixed(1)} / 10</dd></div> : null}
+                  {details.director ? <div><dt>Director</dt><dd>{details.director}</dd></div> : null}
+                </dl>
+
+                {details.genres.length ? <p className="genre-list" aria-label="Genres">{details.genres.map((genre) => <span key={genre}>{genre}</span>)}</p> : null}
+
+                {history.some((movie) => movie.id === selectedMovie.id) ? (
+                  <ReviewsPanel
+                    reviews={reviews}
+                    loading={reviewsLoading}
+                    error={reviewsError}
+                    text={reviewText}
+                    rating={reviewRating}
+                    saving={reviewSaving}
+                    onTextChange={setReviewText}
+                    onRatingChange={setReviewRating}
+                    onSave={saveReview}
+                    onDelete={() => void deleteReview()}
+                  />
+                ) : null}
+
+                <section className="details-section">
+                  <h3>Story</h3>
+                  <p>{details.overview || selectedMovie.overview || "No description is available."}</p>
+                </section>
+
+                {details.cast.length ? (
+                  <section className="details-section">
+                    <h3>Cast</h3>
+                    <p>{details.cast.join(", ")}</p>
+                  </section>
+                ) : null}
+
+                {details.countries.length ? (
+                  <section className="details-section details-countries">
+                    <h3>Production</h3>
+                    <p>{details.countries.join(", ")}</p>
+                  </section>
+                ) : null}
+
+                {details.backdrops.length ? (
+                  <section className="details-section">
+                    <h3>Stills</h3>
+                    <div className="stills-grid">
+                      {details.backdrops.map((still, index) => (
+                        <Image key={still} src={still} alt={`Still ${index + 1} from ${details.title}`} width={780} height={439} sizes="(max-width: 700px) 88vw, 360px" />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {details.trailer ? (
+                  <section className="details-section">
+                    <h3>Trailer</h3>
+                    <div className="trailer-frame">
+                      <iframe
+                        src={`https://www.youtube-nocookie.com/embed/${details.trailer.key}`}
+                        title={`${details.title}: ${details.trailer.name}`}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                      />
+                    </div>
+                  </section>
+                ) : (
+                  <p className="trailer-unavailable">No trailer is available for this film.</p>
+                )}
+              </>
+            ) : null}
+
+          </div>
+        ) : null;
+
   return (
     <main className="app-shell">
       <header className="simple-header">
         <Link href="/" className="header-brand" aria-label="Insieme home"><InsiemeLogo /></Link>
         <nav className="primary-nav" aria-label="Main navigation">
-          <button type="button" aria-current={view === "discover" ? "page" : undefined} onClick={() => setView("discover")}>Discover</button>
-          <button type="button" aria-current={view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Watchlist <span>{ready ? watchlist.length : "—"}</span></button>
-          <button type="button" aria-current={view === "history" ? "page" : undefined} onClick={() => setView("history")}>History</button>
+          <button type="button" aria-current={!film && view === "discover" ? "page" : undefined} onClick={() => setView("discover")}>Discover</button>
+          <button type="button" aria-current={!film && view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Watchlist <span>{ready ? watchlist.length : "—"}</span></button>
+          <button type="button" aria-current={!film && view === "history" ? "page" : undefined} onClick={() => setView("history")}>History</button>
         </nav>
         <ThemeToggle />
-        <Link href="/profile" className="current-profile header-identity"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
+        <Link href="/profile" className="current-profile header-identity" aria-label={`Profile: ${profile.displayName}`}><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
       </header>
 
       <section className="shared-context" aria-label="Current Watchlist">
@@ -529,8 +670,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         </section>
       ) : null}
 
-      <div hidden={view !== "discover"}>
-      <WatchlistSearch
+      {film ? <article className="film-page"><Link className="back-link" href={returnTo}>← Back to {returnTo.includes("view=history") ? "History" : returnTo.includes("view=watchlist") ? "Watchlist" : "Discover"}</Link>{filmContent}</article> : null}
+      <div hidden={Boolean(film) || view !== "discover"}>
+      {!film ? <WatchlistSearch
         watchlistName={currentWatchlist?.name ?? "Watchlist"}
         members={membersLoadedFor === watchlistId ? members : null}
         watchlist={watchlist}
@@ -543,11 +685,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
           document.getElementById("watchlist-heading")?.scrollIntoView({ block: "start" });
         }}
         onAdd={addMovie}
-        onOpenDetails={openDetails}
-      />
+      /> : null}
       </div>
 
-      <section hidden={view !== "watchlist"} className="list-section" aria-labelledby="watchlist-heading">
+      <section hidden={Boolean(film) || view !== "watchlist"} className="list-section" aria-labelledby="watchlist-heading">
         <p className="eyebrow">YOUR SHARED SHORTLIST</p>
         <div className="list-heading">
           <h2 id="watchlist-heading" tabIndex={-1}>
@@ -579,11 +720,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                       className="group"
                       key={movie.id}
                     >
-                      <button
+                      <Link
                         className="film-details-trigger"
-                        type="button"
-                        onClick={() => void openDetails(movie)}
-                        aria-haspopup="dialog"
+                        href={filmHref(movie.id)}
                         aria-label={`View details for ${movie.title}`}
                       >
                         <Poster movie={movie} size="card" />
@@ -591,7 +730,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                           <span className="film-title" title={movie.title}>{movie.title}</span>
                           <span className="film-meta">{movie.year || "Year unknown"}{movie.ratingSource !== "legacy" ? ` · ${formatMovieRating(movie)}` : ""}</span>
                         </span>
-                      </button>
+                      </Link>
                     </li>
                   ))}
               </ul>
@@ -607,7 +746,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         </div>
       </section>
 
-      <section hidden={view !== "history"} className="list-section history-section" aria-labelledby="history-heading">
+      <section hidden={Boolean(film) || view !== "history"} className="list-section history-section" aria-labelledby="history-heading">
         <div className="list-heading">
           <h2 id="history-heading">
             <button
@@ -633,11 +772,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                       className="group history-card"
                       key={movie.id}
                     >
-                      <button
+                      <Link
                         className="film-details-trigger"
-                        type="button"
-                        onClick={() => void openDetails(movie)}
-                        aria-haspopup="dialog"
+                        href={filmHref(movie.id)}
                         aria-label={`View details for ${movie.title}`}
                       >
                         <Poster movie={movie} size="card" />
@@ -645,7 +782,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                           <span className="film-title" title={movie.title}>{movie.title}</span>
                           <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
                         </span>
-                      </button>
+                      </Link>
                     </li>
                   ))}
               </ul>
@@ -806,7 +943,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         </div>
       </dialog>
 
-      <dialog
+      {!film ? <dialog
         className="details-dialog"
         ref={detailsDialog}
         aria-labelledby="details-title"
@@ -815,127 +952,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         }}
       >
         <button className="dialog-close" type="button" onClick={() => detailsDialog.current?.close()} aria-label="Close film details">×</button>
-        {selectedMovie ? (
-          <div className="details-content">
-            <header className="details-heading">
-              <p>{pickerActive ? "Your Watchlist pick" : "Film details"}</p>
-              <h2 id="details-title">{selectedMovie.title}</h2>
-              {details?.tagline ? <p className="tagline">{details.tagline}</p> : null}
-            </header>
-
-            {pickerActive && watchlist.length > 1 ? (
-              <div className="picker-actions">
-                <p>Every film gets a turn before repeats.</p>
-                <button className="pick-film-button" type="button" onClick={chooseFilm} disabled={detailsLoading}>Pick another</button>
-              </div>
-            ) : null}
-
-            {watchlist.some((movie) => movie.id === selectedMovie.id) ? (
-              <div className="details-actions">
-                <button
-                  className="details-watched-button"
-                  type="button"
-                  onClick={() => {
-                    detailsDialog.current?.close();
-                    void markWatched(selectedMovie);
-                  }}
-                >
-                  Mark as watched
-                </button>
-                <button
-                  className="details-remove-button"
-                  type="button"
-                  onClick={() => {
-                    detailsDialog.current?.close();
-                    removeMovie(selectedMovie);
-                  }}
-                >
-                  Remove from Watchlist
-                </button>
-              </div>
-            ) : null}
-
-            {detailsLoading ? <div className="details-state" role="status"><span className="details-spinner" aria-hidden="true" />Loading film details…</div> : null}
-            {detailsError ? <p className="details-state details-error" role="alert">{detailsError}</p> : null}
-
-            {details ? (
-              <>
-                <dl className="details-facts">
-                  {details.releaseDate ? <div><dt>Released</dt><dd>{formatDate(details.releaseDate)}</dd></div> : null}
-                  {details.runtime ? <div><dt>Runtime</dt><dd>{formatRuntime(details.runtime)}</dd></div> : null}
-                  {details.tmdbRating ? <div><dt>TMDb score</dt><dd>{details.tmdbRating.toFixed(1)} / 10</dd></div> : null}
-                  {details.imdbRating ? <div><dt>IMDb rating</dt><dd>{details.imdbRating.toFixed(1)} / 10</dd></div> : null}
-                  {details.director ? <div><dt>Director</dt><dd>{details.director}</dd></div> : null}
-                </dl>
-
-                {details.genres.length ? <p className="genre-list" aria-label="Genres">{details.genres.map((genre) => <span key={genre}>{genre}</span>)}</p> : null}
-
-                {history.some((movie) => movie.id === selectedMovie.id) ? (
-                  <ReviewsPanel
-                    reviews={reviews}
-                    loading={reviewsLoading}
-                    error={reviewsError}
-                    text={reviewText}
-                    rating={reviewRating}
-                    saving={reviewSaving}
-                    onTextChange={setReviewText}
-                    onRatingChange={setReviewRating}
-                    onSave={saveReview}
-                    onDelete={() => void deleteReview()}
-                  />
-                ) : null}
-
-                <section className="details-section">
-                  <h3>Story</h3>
-                  <p>{details.overview || selectedMovie.overview || "No description is available."}</p>
-                </section>
-
-                {details.cast.length ? (
-                  <section className="details-section">
-                    <h3>Cast</h3>
-                    <p>{details.cast.join(", ")}</p>
-                  </section>
-                ) : null}
-
-                {details.countries.length ? (
-                  <section className="details-section details-countries">
-                    <h3>Production</h3>
-                    <p>{details.countries.join(", ")}</p>
-                  </section>
-                ) : null}
-
-                {details.backdrops.length ? (
-                  <section className="details-section">
-                    <h3>Stills</h3>
-                    <div className="stills-grid">
-                      {details.backdrops.map((still, index) => (
-                        <Image key={still} src={still} alt={`Still ${index + 1} from ${details.title}`} width={780} height={439} sizes="(max-width: 700px) 88vw, 360px" />
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-
-                {details.trailer ? (
-                  <section className="details-section">
-                    <h3>Trailer</h3>
-                    <div className="trailer-frame">
-                      <iframe
-                        src={`https://www.youtube-nocookie.com/embed/${details.trailer.key}`}
-                        title={`${details.title}: ${details.trailer.name}`}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                      />
-                    </div>
-                  </section>
-                ) : (
-                  <p className="trailer-unavailable">No trailer is available for this film.</p>
-                )}
-              </>
-            ) : null}
-
-          </div>
-        ) : null}
-      </dialog>
+        {filmContent}
+      </dialog> : null}
     </main>
   );
 }

@@ -17,7 +17,7 @@ a { color:inherit; text-underline-offset:4px; }
 :focus-visible { outline:3px solid var(--accent-dark); outline-offset:3px; }
 ul { margin:0; padding:0; list-style:none; }
 h1,h2,h3,p { margin-top:0; }
-h1,h2,h3 { line-height:1.15; }
+h1,h2,h3 { line-height:1.15; font-weight:650; }
 .sr-only { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
 .eyebrow { margin:0 0 10px; color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.14em; }
 .app-shell { width:min(1320px,calc(100% - 80px)); margin:auto; padding:0 0 32px; }
@@ -126,7 +126,7 @@ dialog::backdrop { background:#0009; }
 .details-content,.manager-content,.filter-dialog-content { padding:30px; }
 .details-heading { padding-right:42px; }
 .details-heading>p:first-child { margin-bottom:8px; color:var(--muted); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; }
-.details-heading h2 { margin:0; font-size:clamp(27px,4vw,42px); letter-spacing:-.04em; }
+.details-heading h2,.details-heading h1 { margin:0; font-size:clamp(27px,4vw,42px); letter-spacing:-.04em; }
 .details-heading .tagline { margin:10px 0 0; color:var(--muted); font-size:14px; }
 .details-state { display:flex; justify-content:center; gap:12px; padding:40px 0; color:var(--muted); }
 .details-error,.reviews-error,.profile-error,.auth-error { color:var(--danger); }
@@ -226,11 +226,30 @@ dialog::backdrop { background:#0009; }
 .insieme-toast[data-sonner-toast] { background:var(--surface); border-color:var(--border); color:var(--text); font-family:var(--font-site); border-radius:4px; }
 .insieme-toast-action[data-button] { background:var(--accent); color:var(--on-accent); }
 .insieme-toast-close[data-close-button] { background:var(--surface); color:var(--text); border-color:var(--border); }
+.film-page { padding-top:24px; }
+.film-page>.details-content { padding:24px 0 0; }
+.film-page .details-heading { margin-bottom:24px; }
+.film-hero { display:grid; grid-template-columns:260px minmax(0,1fr); gap:16px; margin-top:22px; max-height:390px; overflow:hidden; }
+.film-hero>.poster,.film-hero>.poster-placeholder { height:100%; max-height:390px; object-fit:contain; }
+.film-backdrop { display:block; width:100%; height:100%; min-height:0; object-fit:cover; }
+.film-hero-summary { display:grid; align-content:center; padding:24px; background:var(--subtle); color:var(--muted); }
+.film-list-context { margin:22px 0 0; color:var(--muted); font-size:12px; }
+.film-list-context strong { color:var(--text); }
+.film-page .details-actions { margin-top:12px; justify-content:flex-start; }
+.film-page .details-facts { gap:20px 48px; padding-block:24px; }
+.film-page .details-facts dd { font-size:17px; }
+.film-page .details-section { max-width:1000px; margin-top:32px; }
+.film-page .details-section p { max-width:78ch; font-size:15px; }
+.film-page .genre-list { margin-top:22px; }
+.film-page .trailer-frame { max-width:900px; }
+.film-loading { padding-top:60px; }
+.film-loading .film-hero { max-width:900px; }
 @media(max-width:1100px) {
  .app-shell { width:calc(100% - 48px); } .simple-header { gap:20px; } .primary-nav { margin-left:0; gap:20px; }
  .search-results,.film-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } .shared-context-title { gap:8px; } .shared-context-members>span { display:none; } .auth-shell { gap:50px; }
 }
 @media(max-width:700px) {
+ .film-hero { gap:8px; grid-template-columns:1fr 2fr; max-height:220px; } .film-hero>.poster,.film-hero>.poster-placeholder { max-height:220px; } .film-hero-summary { padding:12px; font-size:11px; max-height:220px; overflow:auto; } .film-page .details-facts { gap:16px 24px; } .film-page .details-facts dd { font-size:14px; } .film-page .details-section p { font-size:14px; }
  .app-shell { width:calc(100% - 32px); padding-bottom:24px; } .simple-header { flex-wrap:wrap; gap:0 16px; padding-top:18px; } .header-brand { margin-right:auto; } .insieme-logo { font-size:31px; } .current-profile>span:last-child { display:none; }
  .primary-nav { order:4; flex:1 0 100%; height:54px; gap:28px; margin-top:10px; } .primary-nav button { font-size:13px; } .theme-toggle { min-height:44px; }
  .shared-context { padding-block:10px; flex-wrap:wrap; gap:2px; } .shared-context-title { width:100%; justify-content:space-between; } .header-right { flex:1; min-width:0; } .header-actions { justify-content:space-between; gap:8px; } .header-actions select { max-width:190px; width:100%; font-size:12px; } .header-actions button { min-width:55px; } .manage-label-wide { display:none; } .manage-label-short { display:inline; }

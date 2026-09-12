@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { HistoryMovie, Movie, WatchlistMember } from "@/app/watchlist-types";
@@ -36,17 +38,18 @@ type WatchlistSearchProps = {
   inputRef: RefObject<HTMLInputElement | null>;
   onViewWatchlist: () => void;
   onAdd: (movie: Movie) => Promise<void>;
-  onOpenDetails: (movie: Movie) => Promise<void>;
 };
 
-export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
+export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, onAdd, onViewWatchlist }: WatchlistSearchProps) {
+  const params = useSearchParams();
+  const initialParams = useRef(params.toString());
   const [visibleCount, setVisibleCount] = useState(12);
-  const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
+  const [query, setQuery] = useState(params.get("query") ?? "");
+  const [filters, setFilters] = useState<SearchFilters>(() => ({ genre: params.get("genre") ?? "", director: params.get("director") ?? "", decade: params.get("decade") ?? "", minRating: params.get("minRating") ?? "", sort: params.get("sort") ?? EMPTY_FILTERS.sort }));
   const [results, setResults] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [searchAttempted, setSearchAttempted] = useState(false);
+  const [searchAttempted, setSearchAttempted] = useState(Boolean(params.get("query") || params.get("genre") || params.get("director") || params.get("decade") || params.get("minRating") || params.get("sort")));
   const [searchError, setSearchError] = useState(false);
   const searchRequest = useRef<AbortController | null>(null);
   const filterDialog = useRef<HTMLDialogElement>(null);
@@ -54,7 +57,7 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
   useEffect(() => {
     const request = new AbortController();
     searchRequest.current = request;
-    fetch("/api/movies", { signal: request.signal }).then(async (response) => {
+    fetch(`/api/movies?${initialParams.current}`, { signal: request.signal }).then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Film discovery is unavailable.");
       setResults(data.movies ?? []);
@@ -64,8 +67,8 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
     return () => searchRequest.current?.abort();
   }, []);
 
-  async function searchMovies(activeFilters = filters) {
-    const trimmedQuery = query.trim();
+  async function searchMovies(activeFilters = filters, searchQuery = query) {
+    const trimmedQuery = searchQuery.trim();
     if (trimmedQuery.length === 1) {
       resetResults();
       setMessage("Type at least two characters.");
@@ -75,13 +78,17 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
     searchRequest.current?.abort();
     const request = new AbortController();
     searchRequest.current = request;
-    setSearchAttempted(true);
+    setSearchAttempted(Boolean(trimmedQuery || Object.entries(activeFilters).some(([key, value]) => value !== EMPTY_FILTERS[key as keyof SearchFilters])));
     setSearchError(false);
     setLoading(true);
     setMessage("");
 
     try {
       const searchParams = new URLSearchParams({ query: trimmedQuery, ...activeFilters });
+      const locationParams = new URLSearchParams();
+      if (trimmedQuery) locationParams.set("query", trimmedQuery);
+      Object.entries(activeFilters).forEach(([key, value]) => { if (value && value !== EMPTY_FILTERS[key as keyof SearchFilters]) locationParams.set(key, value); });
+      window.history.replaceState(null, "", locationParams.size ? `/?${locationParams}` : "/");
       const response = await fetch(`/api/movies?${searchParams}`, { signal: request.signal });
       const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string };
       if (!response.ok) throw new Error(data.error ?? "Film search is unavailable.");
@@ -112,8 +119,7 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
     searchRequest.current?.abort();
     searchRequest.current = null;
     setQuery("");
-    setLoading(false);
-    resetResults();
+    void searchMovies(filters, "");
     inputRef.current?.focus();
   }
 
@@ -123,8 +129,7 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
 
   function resetFilters() {
     setFilters(EMPTY_FILTERS);
-    if (query.trim().length >= 2) void searchMovies(EMPTY_FILTERS);
-    else resetResults();
+    void searchMovies(EMPTY_FILTERS);
   }
 
   const activeFilterCount = [
@@ -235,13 +240,13 @@ export function WatchlistSearch({ watchlistName, watchlist, history, inputRef, o
                 const watched = history.some((item) => item.id === movie.id);
                 return (
                   <li className="group" key={movie.id}>
-                    <button className="result-details-trigger" type="button" onClick={() => void onOpenDetails(movie)} aria-haspopup="dialog" aria-label={`View details for ${movie.title}`}>
+                    <Link className="result-details-trigger" href={`/films/${movie.id}?from=${encodeURIComponent("/?" + params.toString())}`} aria-label={`View details for ${movie.title}`} prefetch={false}>
                       <SearchPoster movie={movie} />
                       <span className="result-info">
                         <strong title={movie.title}>{movie.title}</strong>
                         <span>{movie.year || "Year unknown"} · TMDb {formatRating(movie.rating)}</span>
                       </span>
-                    </button>
+                    </Link>
                     <div className="result-actions">
                       <button type="button" onClick={() => void onAdd(movie)} disabled={added || watched}>
                         {watched ? "Watched" : added ? "Added" : "+ Watchlist"}
