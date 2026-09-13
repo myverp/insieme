@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FilmPoster } from "@/app/film-poster";
 import { createClient } from "@/app/lib/supabase/client";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
@@ -18,10 +19,29 @@ const STORAGE_KEY = "insieme-simple-watchlist-v1";
 
 export default function Watchlist({ watchlists, watchlistId, joined, profile }: { watchlists: WatchlistSummary[]; watchlistId: string; joined: boolean; profile: Profile }) {
   const router = useRouter();
+  const params = useSearchParams();
+  const view = params.get("view") === "history" ? "history" : params.get("view") === "watchlist" ? "watchlist" : "discover";
+  const scrollPositions = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const previous = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    const frame = requestAnimationFrame(() => window.scrollTo(0, scrollPositions.current[view] ?? 0));
+    const remember = () => { const active = new URLSearchParams(window.location.search).get("view") || "discover"; if (active === view) scrollPositions.current[view] = window.scrollY; };
+    window.addEventListener("scroll", remember, { passive: true });
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("scroll", remember); window.history.scrollRestoration = previous; };
+  }, [view]);
+  function navigate(next: string) {
+    if (next === view) return;
+    scrollPositions.current[view] = window.scrollY;
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", next);
+    window.history.pushState(null, "", url);
+  }
   const currentWatchlist = watchlists.find((item) => item.id === watchlistId) ?? watchlists[0];
   const [watchlist, setWatchlist] = useState<Movie[]>([]);
   const [history, setHistory] = useState<HistoryMovie[]>([]);
   const [ready, setReady] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [pickerActive, setPickerActive] = useState(false);
   const pickerCycle = useRef<{ watchlistId: string; seen: number[] }>({ watchlistId, seen: [] });
@@ -36,14 +56,11 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
   const [reviewRating, setReviewRating] = useState<number | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const [members, setMembers] = useState<WatchlistMember[]>([{ profile, role: currentWatchlist?.role ?? "owner" }]);
-  const [membersLoadedFor, setMembersLoadedFor] = useState<string | null>(null);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | "rename" | "lifecycle" | null>(null);
   const [newListName, setNewListName] = useState("");
   const [renameListName, setRenameListName] = useState(currentWatchlist?.name ?? "");
   const [legacyMovies, setLegacyMovies] = useState<Movie[]>([]);
   const [legacyImporting, setLegacyImporting] = useState(false);
-  const [watchlistOpen, setWatchlistOpen] = useState(true);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const detailsDialog = useRef<HTMLDialogElement>(null);
   const managerDialog = useRef<HTMLDialogElement>(null);
@@ -59,7 +76,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         const data = (await response.json()) as { members?: WatchlistMember[] };
         if (response.ok && data.members && !cancelled) {
           setMembers(data.members);
-          setMembersLoadedFor(watchlistId);
         }
       })
       .catch(() => {
@@ -144,6 +160,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         body: JSON.stringify({ id }),
       });
       if (!response.ok) throw new Error("The Watchlist could not be selected.");
+      setReady(false);
+      setWatchlist([]);
+      setHistory([]);
       managerDialog.current?.close();
       router.refresh();
       setListAction(null);
@@ -273,16 +292,20 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
 
   async function addMovie(movie: Movie) {
     const alreadyAdded = watchlist.some((item) => item.id === movie.id) || history.some((item) => item.id === movie.id);
-    if (alreadyAdded) return;
+    if (alreadyAdded || adding || !ready) return;
+    setAdding(true);
 
-    setWatchlist((current) => [...current, movie]);
     try {
       await saveMovie(movie);
+      setWatchlist((current) => [...current.filter((item) => item.id !== movie.id), movie]);
       toast.success(`Added “${movie.title}” to our list ♡`);
     } catch (error) {
       setWatchlist((current) => current.filter((item) => item.id !== movie.id));
       const errorMessage = error instanceof Error ? error.message : "The film could not be added.";
       toast.error(errorMessage);
+      throw error;
+    } finally {
+      setAdding(false);
     }
   }
 
@@ -480,24 +503,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     <main className="app-shell">
       <header className="simple-header">
         <div className="header-brand"><h1><InsiemeLogo /></h1></div>
-        <div className="header-right">
-          <div className="header-actions">
-            <label className="sr-only" htmlFor="watchlist-selector">Current Watchlist</label>
-            <select
-              id="watchlist-selector"
-              value={watchlistId}
-              onChange={(event) => void selectList(event.target.value)}
-              disabled={listAction !== null}
-            >
-              {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-            <button className="manage-watchlists-button" type="button" onClick={openManager} disabled={listAction !== null}>
-              <SettingsIcon />
-              <span className="manage-label-wide">Manage Watchlists</span>
-              <span className="manage-label-short">Manage</span>
-            </button>
-          </div>
-        </div>
+        <nav className="primary-navigation" aria-label="Main navigation">
+          {(["discover", "watchlist", "history"] as const).map((item) => <a key={item} href={`?view=${item}`} aria-current={view === item ? "page" : undefined} onClick={(event) => { if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0) { event.preventDefault(); navigate(item); } }}>{item === "discover" ? "Discover" : item === "watchlist" ? "Watchlist" : "History"}</a>)}
+        </nav>
+        <button className="watchlist-switcher" type="button" onClick={openManager} disabled={adding || listAction !== null} aria-haspopup="dialog" aria-label={`Current Watchlist: ${currentWatchlist?.name}`}><span>{currentWatchlist?.name}</span><span aria-hidden="true">▾</span></button>
         <Link href="/profile" className="current-profile header-identity"><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
       </header>
 
@@ -518,42 +527,29 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         </section>
       ) : null}
 
+      <div hidden={view !== "discover"}>
       <WatchlistSearch
-        watchlistName={currentWatchlist?.name ?? "Watchlist"}
-        members={membersLoadedFor === watchlistId ? members : null}
+        watchlistId={watchlistId}
+        canAdd={ready && !adding && listAction === null}
         watchlist={watchlist}
         history={history}
         inputRef={searchInput}
-        onViewWatchlist={() => {
-          setWatchlistOpen(true);
-          document.getElementById("watchlist-heading")?.focus();
-          document.getElementById("watchlist-heading")?.scrollIntoView({ block: "start" });
-        }}
         onAdd={addMovie}
         onOpenDetails={openDetails}
       />
 
-      <section className="list-section" aria-labelledby="watchlist-heading">
+      </div>
+      <section hidden={view !== "watchlist"} className="list-section" aria-labelledby="watchlist-heading">
         <div className="list-heading">
           <h2 id="watchlist-heading" tabIndex={-1}>
-            <button
-              className="list-heading-toggle"
-              type="button"
-              aria-expanded={watchlistOpen}
-              aria-controls="watchlist-content"
-              onClick={() => setWatchlistOpen((open) => !open)}
-            >
-              <span>Watchlist</span>
-              {watchlist.length ? <span className="list-count">{watchlist.length}</span> : null}
-              <span className="collapse-arrow" aria-hidden="true" />
-            </button>
+            Watchlist <span className="list-count">{watchlist.length}</span>
           </h2>
           <button className="pick-film-button" type="button" onClick={chooseFilm} disabled={!ready || !watchlist.length || listAction !== null} aria-haspopup="dialog" title={!watchlist.length ? "Add a film to your Watchlist first" : undefined}>
             {watchlist.length === 1 ? "View our film" : "Pick a film"}
           </button>
         </div>
 
-        <div id="watchlist-content" className={`collapsible-panel${watchlistOpen ? "" : " is-collapsed"}`} aria-hidden={!watchlistOpen} inert={!watchlistOpen}>
+        <div id="watchlist-content" className="collapsible-panel">
           <div className="collapsible-inner">
             {!ready ? (
               <FilmGridSkeleton count={4} />
@@ -571,7 +567,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                         aria-haspopup="dialog"
                         aria-label={`View details for ${movie.title}`}
                       >
-                        <Poster movie={movie} size="card" />
+                        <FilmPoster movie={movie} />
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
                           <span className="film-meta">{movie.year || "Year unknown"}{` · IMDb ${formatImdbRating(movie)}`}</span>
@@ -584,32 +580,22 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
               <div className="empty-state">
                 <span className="empty-state-icon empty-state-list-icon" aria-hidden="true"><ListIcon /></span>
                 <strong>Your Watchlist is empty</strong>
-                <span>Search for a film above and add it to your shared list.</span>
-                <button type="button" onClick={() => searchInput.current?.focus()}>Find a film</button>
+                <span>Discover a film to add to this Watchlist.</span>
+                <button type="button" onClick={() => { navigate("discover"); requestAnimationFrame(() => searchInput.current?.focus()); }}>Find a film</button>
               </div>
             )}
           </div>
         </div>
       </section>
 
-      <section className="list-section history-section" aria-labelledby="history-heading">
+      <section hidden={view !== "history"} className="list-section history-section" aria-labelledby="history-heading">
         <div className="list-heading">
           <h2 id="history-heading">
-            <button
-              className="list-heading-toggle"
-              type="button"
-              aria-expanded={historyOpen}
-              aria-controls="history-content"
-              onClick={() => setHistoryOpen((open) => !open)}
-            >
-              <span>Watched history</span>
-              {history.length ? <span className="list-count">{history.length}</span> : null}
-              <span className="collapse-arrow" aria-hidden="true" />
-            </button>
+            History <span className="list-count">{history.length}</span>
           </h2>
         </div>
 
-        <div id="history-content" className={`collapsible-panel${historyOpen ? "" : " is-collapsed"}`} aria-hidden={!historyOpen} inert={!historyOpen}>
+        <div id="history-content" className="collapsible-panel">
           <div className="collapsible-inner">
             {history.length ? (
               <ul className="film-grid history-grid">
@@ -625,9 +611,10 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                         aria-haspopup="dialog"
                         aria-label={`View details for ${movie.title}`}
                       >
-                        <Poster movie={movie} size="card" />
+                        <FilmPoster movie={movie} />
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
+                          <span className="film-meta">{movie.year || "Year unknown"} · IMDb {formatImdbRating(movie)}</span>
                           <span className="film-meta">Watched {formatWatchedDate(movie.watchedAt)}</span>
                         </span>
                       </button>
@@ -669,8 +656,8 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         <div className="manager-content">
           <header className="details-heading">
             <p>Watchlists</p>
-            <h2 id="watchlist-manager-title">Manage Watchlists</h2>
-            <p className="tagline">Choose a list, invite a friend, or start a new one.</p>
+            <h2 id="watchlist-manager-title">Watchlists</h2>
+
           </header>
 
           <section className="manager-section" aria-labelledby="your-watchlists-title">
@@ -694,27 +681,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                 </div>
               ))}
             </div>
-          </section>
-
-          <section className="manager-section" aria-labelledby="watchlist-members-title">
-            <div className="manager-section-heading">
-              <div>
-                <h3 id="watchlist-members-title">Members</h3>
-                <p>People who share this Watchlist.</p>
-              </div>
-              <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
-                {listAction === "invite" ? "Copying…" : "Copy invite link"}
-              </button>
-            </div>
-            <ul className="manager-members" aria-label="Watchlist members">
-              {members.map((member) => (
-                <li className="manager-member" key={member.profile.userId}>
-                  <ProfileAvatar displayName={member.profile.displayName} small />
-                  <span>{member.profile.displayName}</span>
-                  {member.role === "owner" ? <span className="manager-member-role">Owner</span> : null}
-                </li>
-              ))}
-            </ul>
           </section>
 
           <details className="manager-section manager-settings manager-create-section">
@@ -748,7 +714,29 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             </form>
           </details>
           <details className="manager-section manager-settings" key={watchlistId}>
-            <summary>Watchlist settings</summary>
+            <summary>Settings for {currentWatchlist?.name}</summary>
+          <section className="manager-section" aria-labelledby="watchlist-members-title">
+            <div className="manager-section-heading">
+              <div>
+                <h3 id="watchlist-members-title">Members</h3>
+                <p>People who share this Watchlist.</p>
+              </div>
+              <button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>
+                {listAction === "invite" ? "Copying…" : "Copy invite link"}
+              </button>
+            </div>
+            <ul className="manager-members" aria-label="Watchlist members">
+              {members.map((member) => (
+                <li className="manager-member" key={member.profile.userId}>
+                  <ProfileAvatar displayName={member.profile.displayName} small />
+                  <span>{member.profile.displayName}</span>
+                  {member.role === "owner" ? <span className="manager-member-role">Owner</span> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+
             <div className="manager-section-heading">
               <div>
                 <p>{currentWatchlist?.role === "owner" ? "Rename this Watchlist or remove it permanently." : "Only the Owner can rename or delete this Watchlist."}</p>
@@ -1117,16 +1105,6 @@ function formatWatchedDate(date: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(new Date(date));
 }
 
-function SettingsIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 7h6m4 0h6M4 17h10m4 0h2" />
-      <circle cx="12" cy="7" r="2" />
-      <circle cx="16" cy="17" r="2" />
-    </svg>
-  );
-}
-
 function ListIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false">
@@ -1135,23 +1113,5 @@ function ListIcon() {
       <circle cx="4" cy="18" r="1" fill="currentColor" />
       <path d="M8 6h12M8 12h12M8 18h12" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
     </svg>
-  );
-}
-
-function Poster({ movie, size }: { movie: Movie; size: "card" }) {
-  const dimensions = { width: 342, height: 513 };
-  if (!movie.poster) {
-    return <span className={`poster-placeholder poster-${size}`} aria-label="No poster available">No poster</span>;
-  }
-
-  return (
-    <Image
-      className={`poster poster-${size}`}
-      src={movie.poster}
-      alt={`${movie.title} poster`}
-      width={dimensions.width}
-      height={dimensions.height}
-      sizes="(max-width: 700px) 104px, (max-width: 950px) 33vw, 25vw"
-    />
   );
 }

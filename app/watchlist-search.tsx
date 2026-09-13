@@ -1,12 +1,11 @@
 "use client";
 
-import Image from "next/image";
+import { FilmPoster } from "@/app/film-poster";
 import { formatImdbRating } from "@/app/lib/imdb-rating";
 import { mergeMovieResults } from "@/app/lib/movie-results";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { HistoryMovie, Movie, WatchlistMember } from "@/app/watchlist-types";
-import { ProfileAvatar } from "@/app/profile/avatar";
+import type { HistoryMovie, Movie } from "@/app/watchlist-types";
 
 const GENRES = [
   [28, "Action"], [12, "Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"],
@@ -32,18 +31,17 @@ const EMPTY_FILTERS: SearchFilters = {
 };
 
 type WatchlistSearchProps = {
-  watchlistName: string;
-  members: WatchlistMember[] | null;
+  watchlistId: string;
+  canAdd: boolean;
   watchlist: Movie[];
   history: HistoryMovie[];
   inputRef: RefObject<HTMLInputElement | null>;
-  onViewWatchlist: () => void;
   onAdd: (movie: Movie) => Promise<void>;
   onOpenDetails: (movie: Movie) => Promise<void>;
 };
 
-export function WatchlistSearch({ watchlistName, members, watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
-  const [visibleCount, setVisibleCount] = useState(4);
+export function WatchlistSearch({ watchlistId, canAdd, watchlist, history, inputRef, onAdd, onOpenDetails }: WatchlistSearchProps) {
+  const [visibleCount, setVisibleCount] = useState(12);
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
   const [results, setResults] = useState<Movie[]>([]);
@@ -105,7 +103,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
       if (!response.ok) throw new Error(data.error ?? "Film search is unavailable.");
       if (searchRequest.current !== request) return;
       setResults((previous) => mergeMovieResults(page === 1 ? [] : previous, data.movies ?? [], activeFilters.sort));
-      setVisibleCount((previous) => page === 1 ? 4 : previous + 4);
+      setVisibleCount((previous) => page === 1 ? 12 : previous + 12);
       setNextPage(data.nextPage ?? null);
       inspectedCount.current += data.inspected ?? 0;
       setFailedRatings((count) => (page === 1 ? 0 : count) + (data.unavailable ?? 0));
@@ -182,14 +180,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
 
   return (
     <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
-      <div className="discovery-context">
-        <div><strong>{watchlistName}</strong></div>
-        {members ? <ul className="discovery-members" aria-label="Watchlist members">
-          {members.slice(0, 4).map((member) => <li key={member.profile.userId} title={member.profile.displayName}><ProfileAvatar displayName={member.profile.displayName} small /><span className="sr-only">{member.profile.displayName}</span></li>)}
-          {members.length > 4 ? <li>+{members.length - 4}<span className="sr-only"> more Members</span></li> : null}
-        </ul> : null}
-      </div>
-      <h2 id="add-film-heading">Add a film</h2>
+      <h2 id="add-film-heading">Discover</h2>
       <label className="sr-only" htmlFor="film-search">Search by title</label>
       <form className="search-row" onSubmit={(event) => { event.preventDefault(); void searchMovies(); }}>
         <div className="search-input-wrap">
@@ -274,20 +265,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
                 const added = watchlist.some((item) => item.id === movie.id);
                 const watched = history.some((item) => item.id === movie.id);
                 return (
-                  <li className="group" key={movie.id}>
-                    <button className="result-details-trigger" type="button" onClick={() => void onOpenDetails(movie)} aria-haspopup="dialog" aria-label={`View details for ${movie.title}`}>
-                      <SearchPoster movie={movie} />
-                      <span className="result-info">
-                        <strong title={movie.title}>{movie.title}</strong>
-                        <span>{movie.year || "Year unknown"} · IMDb {formatImdbRating(movie)}</span>
-                      </span>
-                    </button>
-                    <div className="result-actions">
-                      <button type="button" onClick={() => void onAdd(movie)} disabled={added || watched}>
-                        {watched ? "Watched" : added ? "Added" : "Add"}
-                      </button>
-                    </div>
-                  </li>
+                  <DiscoveryCard key={`${watchlistId}-${movie.id}`} canAdd={canAdd} movie={movie} added={added} watched={watched} onAdd={onAdd} onOpenDetails={onOpenDetails} />
                 );
               })}
             </ul>
@@ -300,12 +278,8 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
           )}
         </div>
       ) : null}
-      {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 4)}>Show more films</button> : null}
+      {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 12)}>Show more films</button> : null}
       {!loading && nextPage && results.length <= visibleCount ? <button className="show-more-results" type="button" onClick={() => void searchMovies(submittedSearch.current.filters, nextPage)}>{searchError ? "Retry loading more films" : "Load more films"}</button> : null}
-      {!loading && results.length > 0 ? <div className="watchlist-bridge">
-        <span>{watchlistName}</span>
-        <button type="button" onClick={onViewWatchlist}>View Watchlist ({watchlist.length})</button>
-      </div> : null}
     </section>
   );
 }
@@ -364,9 +338,27 @@ function FilterIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>;
 }
 
-function SearchPoster({ movie }: { movie: Movie }) {
-  if (!movie.poster) return <span className="poster-placeholder poster-card" aria-label="No poster available">No poster</span>;
-  return <Image className="poster poster-card" src={movie.poster} alt={`${movie.title} poster`} width={342} height={513} sizes="(max-width: 430px) 104px, (max-width: 700px) 50vw, 25vw" />;
+function DiscoveryCard({ movie, canAdd, added, watched, onAdd, onOpenDetails }: { movie: Movie; canAdd: boolean; added: boolean; watched: boolean; onAdd: (movie: Movie) => Promise<void>; onOpenDetails: (movie: Movie) => Promise<void> }) {
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const busy = useRef(false);
+  async function add() {
+    if (busy.current || added || watched) return;
+    busy.current = true; setPending(true); setFailed(false);
+    try { await onAdd(movie); } catch { setFailed(true); } finally { busy.current = false; setPending(false); }
+  }
+  return <li className="discovery-card">
+    <button className="result-details-trigger" type="button" onClick={() => void onOpenDetails(movie)} aria-haspopup="dialog" aria-label={`View details for ${movie.title}`}>
+      <FilmPoster movie={movie} />
+      <span className="result-info"><strong title={movie.title}>{movie.title}</strong><span>{movie.year || "Year unknown"} · IMDb {formatImdbRating(movie)}</span></span>
+    </button>
+    <div className="result-actions" data-visible={pending || failed || added || watched || undefined}>
+      <button type="button" onClick={() => void add()} disabled={!canAdd || pending || added || watched} aria-label={`${pending ? "Adding" : watched ? "Watched" : added ? "In Watchlist" : failed ? "Retry adding" : "Add to Watchlist"}: ${movie.title}`}>
+        {pending ? "Adding…" : watched ? "Watched" : added ? "In Watchlist" : failed ? "Retry adding" : "+ Watchlist"}
+      </button>
+    </div>
+    {failed ? <span className="card-error" role="alert">Could not add. Try again.</span> : null}
+  </li>;
 }
 
 function SearchSkeleton() {
