@@ -8,8 +8,8 @@ Choosing a film is often harder than finding one. Insieme keeps the process in o
 
 ## What it does
 
-- Search TMDb by title or filters such as genre, director, decade, minimum score, and sort order.
-- Open film details with synopsis, cast, images, trailer availability, and IMDb rating enrichment when available.
+- Search TMDb by title or filters such as genre, director, decade, minimum IMDb rating, and sort order within loaded candidates.
+- Open film details with synopsis, cast, images, trailer availability, and IMDb ratings with explicit unrated and unavailable states.
 - Add and remove films, undo a removal, and mark films as watched.
 - Create and switch between named Watchlists, rename or delete lists as their Owner, and leave lists as a Member.
 - Invite other people with private links and keep Watchlist access scoped to authenticated Members.
@@ -58,6 +58,8 @@ pnpm dev
 ```
 
 Then open [http://localhost:3000](http://localhost:3000).
+
+See [film discovery and ratings](docs/film-discovery.md) for pagination scope, provider limits, cache policy, and failure handling.
 
 ## Verification
 
