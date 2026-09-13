@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import { formatImdbRating } from "@/app/lib/imdb-rating";
+import { mergeMovieResults } from "@/app/lib/movie-results";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { HistoryMovie, Movie, WatchlistMember } from "@/app/watchlist-types";
@@ -47,6 +49,11 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
   const [results, setResults] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [nextPage, setNextPage] = useState<number | null>(null);
+  const [scope, setScope] = useState("");
+  const [failedRatings, setFailedRatings] = useState(0);
+  const inspectedCount = useRef(0);
+  const submittedSearch = useRef({ query: "", filters: EMPTY_FILTERS });
   const [searchAttempted, setSearchAttempted] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const searchRequest = useRef<AbortController | null>(null);
@@ -54,8 +61,9 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
 
   useEffect(() => () => searchRequest.current?.abort(), []);
 
-  async function searchMovies(activeFilters = filters) {
-    const trimmedQuery = query.trim();
+  async function searchMovies(activeFilters = filters, page = 1, retryQuery?: string) {
+    const trimmedQuery = retryQuery ?? (page === 1 ? query.trim() : submittedSearch.current.query);
+    if (page !== 1) activeFilters = submittedSearch.current.filters;
     const hasFilters = Boolean(
       activeFilters.genre
       || activeFilters.director.trim()
@@ -81,18 +89,32 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
     setSearchError(false);
     setLoading(true);
     setMessage("");
+    if (page === 1) {
+      submittedSearch.current = { query: trimmedQuery, filters: activeFilters };
+      setResults([]);
+      setNextPage(null);
+      setScope("");
+      inspectedCount.current = 0;
+      setFailedRatings(0);
+    }
 
     try {
-      const searchParams = new URLSearchParams({ query: trimmedQuery, ...activeFilters });
+      const searchParams = new URLSearchParams({ query: trimmedQuery, ...activeFilters, page: String(page) });
       const response = await fetch(`/api/movies?${searchParams}`, { signal: request.signal });
-      const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string };
+      const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string; inspected?: number; unavailable?: number; nextPage?: number | null; providerLimitReached?: boolean };
       if (!response.ok) throw new Error(data.error ?? "Film search is unavailable.");
-      setResults(data.movies ?? []);
-      setVisibleCount(4);
-      setMessage(data.movies?.length ? (data.message ?? "") : (data.message || "No films found."));
+      if (searchRequest.current !== request) return;
+      setResults((previous) => mergeMovieResults(page === 1 ? [] : previous, data.movies ?? [], activeFilters.sort));
+      setVisibleCount((previous) => page === 1 ? 4 : previous + 4);
+      setNextPage(data.nextPage ?? null);
+      inspectedCount.current += data.inspected ?? 0;
+      setFailedRatings((count) => (page === 1 ? 0 : count) + (data.unavailable ?? 0));
+      setScope(`Checked ${inspectedCount.current} matching candidates. Filtering and sorting apply only to loaded films.` + (data.providerLimitReached ? " The provider page limit was reached; narrow your search." : data.nextPage ? " Load more to extend the results." : " All accessible candidate pages for this search have been checked."));
+      setMessage(data.message ?? "");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setResults([]);
+      if (searchRequest.current !== request) return;
+      if (page === 1) setResults([]);
       setSearchError(true);
       setMessage(error instanceof Error ? error.message : "Film search is unavailable.");
     } finally {
@@ -104,6 +126,13 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
   }
 
   function resetResults() {
+    searchRequest.current?.abort();
+    searchRequest.current = null;
+    setLoading(false);
+    setNextPage(null);
+    setScope("");
+    inspectedCount.current = 0;
+    setFailedRatings(0);
     setResults([]);
     setMessage("");
     setSearchAttempted(false);
@@ -141,7 +170,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
     filters.genre ? { name: "genre" as const, label: GENRES.find(([id]) => String(id) === filters.genre)?.[1] ?? "Genre" } : null,
     filters.director.trim() ? { name: "director" as const, label: `Director: ${filters.director.trim()}` } : null,
     filters.decade ? { name: "decade" as const, label: `${filters.decade}s` } : null,
-    filters.minRating ? { name: "minRating" as const, label: `${filters.minRating}+ TMDb` } : null,
+    filters.minRating ? { name: "minRating" as const, label: `${filters.minRating}+ IMDb` } : null,
     filters.sort !== EMPTY_FILTERS.sort ? { name: "sort" as const, label: sortLabel(filters.sort) } : null,
   ].filter((item): item is { name: keyof SearchFilters; label: string } => Boolean(item));
 
@@ -233,7 +262,9 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
         </div>
       ) : null}
 
-      {message && !loading ? <p className="status" role="status">{message}</p> : null}
+      {failedRatings > 0 && !loading ? <p className="status" role="status">{failedRatings} candidate ratings could not be checked; rating matches may be missing. <button type="button" onClick={() => { setQuery(submittedSearch.current.query); setFilters(submittedSearch.current.filters); void searchMovies(submittedSearch.current.filters, 1, submittedSearch.current.query); }}>Retry search</button></p> : null}
+      {scope ? <p className="status" role="status">{scope}</p> : null}
+      {message && !loading ? <p className="status" role={searchError ? "alert" : "status"}>{message}</p> : null}
       {loading || results.length || searchAttempted ? (
         <div className="results-block">
           <div className="results-heading"><h3>Search results</h3>{results.length ? <span aria-live="polite">{Math.min(visibleCount, results.length)} of {results.length} found</span> : null}</div>
@@ -248,7 +279,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
                       <SearchPoster movie={movie} />
                       <span className="result-info">
                         <strong title={movie.title}>{movie.title}</strong>
-                        <span>{movie.year || "Year unknown"} · TMDb {formatRating(movie.rating)}</span>
+                        <span>{movie.year || "Year unknown"} · IMDb {formatImdbRating(movie)}</span>
                       </span>
                     </button>
                     <div className="result-actions">
@@ -263,13 +294,14 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
           ) : (
             <div className={`search-empty${searchError ? " search-empty-error" : ""}`} role={searchError ? "alert" : "status"}>
               <span className="empty-state-icon" aria-hidden="true">{searchError ? "!" : "⌕"}</span>
-              <strong>{searchError ? "Search unavailable" : "No films found"}</strong>
+              <strong>{searchError ? "Search unavailable" : "No matches in checked films"}</strong>
               <span>{searchError ? message : "Try a different title or loosen your filters."}</span>
             </div>
           )}
         </div>
       ) : null}
       {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 4)}>Show more films</button> : null}
+      {!loading && nextPage && results.length <= visibleCount ? <button className="show-more-results" type="button" onClick={() => void searchMovies(submittedSearch.current.filters, nextPage)}>{searchError ? "Retry loading more films" : "Load more films"}</button> : null}
       {!loading && results.length > 0 ? <div className="watchlist-bridge">
         <span>{watchlistName}</span>
         <button type="button" onClick={onViewWatchlist}>View Watchlist ({watchlist.length})</button>
@@ -300,19 +332,19 @@ function FilterFields({ filters, updateFilter }: { filters: SearchFilters; updat
         </select>
       </label>
       <label>
-        <span>Minimum rating</span>
+        <span>Minimum IMDb rating</span>
         <select value={filters.minRating} onChange={(event) => updateFilter("minRating", event.target.value)}>
           <option value="">Any rating</option>
-          <option value="6">6+ on TMDb</option>
-          <option value="7">7+ on TMDb</option>
-          <option value="8">8+ on TMDb</option>
+          <option value="6">6+ on IMDb</option>
+          <option value="7">7+ on IMDb</option>
+          <option value="8">8+ on IMDb</option>
         </select>
       </label>
       <label>
         <span>Sort by</span>
         <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}>
           <option value="popularity.desc">Most popular</option>
-          <option value="vote_average.desc">Highest rated</option>
+          <option value="imdb_rating.desc">Highest IMDb (loaded films)</option>
           <option value="primary_release_date.desc">Newest first</option>
           <option value="primary_release_date.asc">Oldest first</option>
         </select>
@@ -322,7 +354,7 @@ function FilterFields({ filters, updateFilter }: { filters: SearchFilters; updat
 }
 
 function sortLabel(sort: string) {
-  if (sort === "vote_average.desc") return "Highest rated";
+  if (sort === "imdb_rating.desc") return "Highest IMDb (loaded films)";
   if (sort === "primary_release_date.desc") return "Newest first";
   if (sort === "primary_release_date.asc") return "Oldest first";
   return "Most popular";
@@ -343,8 +375,4 @@ function SearchSkeleton() {
       {Array.from({ length: 5 }, (_, index) => <li className="skeleton-card" key={index}><span className="skeleton-poster" /><span className="skeleton-lines"><i /><i /></span></li>)}
     </ul>
   );
-}
-
-function formatRating(rating: number) {
-  return rating ? rating.toFixed(1) : "N/A";
 }

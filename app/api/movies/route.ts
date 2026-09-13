@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { collectMovieResults } from "@/app/lib/movie-results";
+import { getImdbRating } from "@/app/lib/imdb";
+import { collectMovieResults, mergeMovieResults } from "@/app/lib/movie-results";
 
 type TmdbMovie = {
   id: number;
@@ -7,8 +8,6 @@ type TmdbMovie = {
   release_date?: string;
   poster_path?: string | null;
   overview?: string;
-  vote_average?: number;
-  vote_count?: number;
   popularity?: number;
   genre_ids?: number[];
 };
@@ -18,8 +17,7 @@ type TmdbPerson = { id: number; name: string; known_for_department?: string; pop
 type TmdbPersonResponse = { results?: TmdbPerson[]; status_message?: string };
 type TmdbCreditsResponse = { crew?: Array<TmdbMovie & { job?: string }>; status_message?: string };
 
-const allowedSorts = new Set(["popularity.desc", "vote_average.desc", "primary_release_date.desc", "primary_release_date.asc"]);
-const MIN_RELIABLE_VOTE_COUNT = 100;
+const allowedSorts = new Set(["popularity.desc", "imdb_rating.desc", "primary_release_date.desc", "primary_release_date.asc"]);
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -28,14 +26,19 @@ export async function GET(request: NextRequest) {
   const genre = parseNumber(params.get("genre"));
   const decade = parseNumber(params.get("decade"));
   const rawMinRating = params.get("minRating");
-  const minRating = parseNumber(rawMinRating);
+  const minRating = rawMinRating?.trim() ? Number(rawMinRating) : null;
+  const startPage = Number(params.get("page") ?? "1");
   const requestedSort = params.get("sort") ?? "popularity.desc";
   const sort = allowedSorts.has(requestedSort) ? requestedSort : "popularity.desc";
   const token = process.env.TMDB_READ_TOKEN;
-  const hasFilters = Boolean(director || genre || decade || minRating || sort !== "popularity.desc");
+  const hasFilters = Boolean(director || genre || decade || minRating !== null || sort !== "popularity.desc");
 
-  if (rawMinRating && (!Number.isFinite(Number(rawMinRating)) || minRating < 0 || minRating > 10)) {
-    return NextResponse.json({ error: "Minimum TMDb score must be between 0 and 10." }, { status: 400 });
+  if (minRating !== null && (!Number.isFinite(minRating) || minRating < 0 || minRating > 10)) {
+    return NextResponse.json({ error: "Minimum IMDb rating must be between 0 and 10." }, { status: 400 });
+  }
+
+  if (!Number.isInteger(startPage) || startPage < 1 || startPage > 500) {
+    return NextResponse.json({ error: "Page must be an integer between 1 and 500." }, { status: 400 });
   }
 
   if ((!query || query.length < 2) && !hasFilters) {
@@ -54,7 +57,7 @@ export async function GET(request: NextRequest) {
   async function tmdb<T>(path: string, searchParams: URLSearchParams) {
     searchParams.set("language", "en-US");
     if (!isReadToken) searchParams.set("api_key", token!);
-    const response = await fetch(`https://api.themoviedb.org/3/${path}?${searchParams}`, { headers, next: { revalidate: 3600 } });
+    const response = await fetch(`https://api.themoviedb.org/3/${path}?${searchParams}`, { headers, signal: AbortSignal.timeout(8000), next: { revalidate: 3600 } });
     const data = (await response.json()) as T & { status_message?: string };
     if (!response.ok) throw new Error(data.status_message ?? "TMDb search failed.");
     return data;
@@ -85,13 +88,13 @@ export async function GET(request: NextRequest) {
     const applyLocalFilters = (movies: TmdbMovie[]) => movies.filter((movie) => {
       const year = Number(movie.release_date?.slice(0, 4));
       return (!genre || movie.genre_ids?.includes(genre))
-        && (!decade || (year >= decade && year <= decade + 9))
-        && (!minRating || ((movie.vote_average ?? 0) >= minRating && (movie.vote_count ?? 0) >= MIN_RELIABLE_VOTE_COUNT));
+        && (!decade || (year >= decade && year <= decade + 9));
     });
 
     const loadPage = async (page: number) => {
       if (director && !query) {
-        return { movies: applyLocalFilters(directedMovies), hasMore: false };
+        const candidates = applyLocalFilters(directedMovies);
+        return { movies: candidates.slice((page - 1) * 20, page * 20), hasMore: page * 20 < candidates.length };
       }
 
       if (query) {
@@ -106,12 +109,9 @@ export async function GET(request: NextRequest) {
         return { movies: applyLocalFilters(movies), hasMore: page < (searched.total_pages ?? 1) };
       }
 
-      const discoverParams = new URLSearchParams({ include_adult: "false", include_video: "false", page: String(page), sort_by: sort });
+      const discoverParams = new URLSearchParams({ include_adult: "false", include_video: "false", page: String(page), sort_by: sort === "imdb_rating.desc" ? "popularity.desc" : sort });
       if (genre) discoverParams.set("with_genres", String(genre));
-      if (minRating) {
-        discoverParams.set("vote_average.gte", String(minRating));
-        discoverParams.set("vote_count.gte", String(MIN_RELIABLE_VOTE_COUNT));
-      }
+
       if (decade) {
         discoverParams.set("primary_release_date.gte", `${decade}-01-01`);
         discoverParams.set("primary_release_date.lte", `${decade + 9}-12-31`);
@@ -120,25 +120,24 @@ export async function GET(request: NextRequest) {
       return { movies: applyLocalFilters(discovered.results ?? []), hasMore: page < (discovered.total_pages ?? 1) };
     };
 
-    const filteredMovies = await collectMovieResults({
+    const batch = await collectMovieResults({
       loadPage,
-      acceptMovie: (movie) => applyLocalFilters([movie]).length === 1,
-      getMovieId: (movie) => movie.id,
-      compare: (first, second) => compareMovies(first, second, sort),
-      maxPages: query ? 5 : 1,
-      scanAllPages: Boolean(query && sort !== "popularity.desc"),
+      rateMovie: (movie) => getImdbRating({ tmdbId: movie.id }),
+      minRating,
+      startPage,
+      requireRatings: sort === "imdb_rating.desc",
     });
 
     return NextResponse.json({
-      movies: filteredMovies.map(toMovie),
-      message: resolvedDirector
-        ? `Films directed by ${resolvedDirector}.`
-        : minRating
-          ? `TMDb scores use films with at least ${MIN_RELIABLE_VOTE_COUNT} votes.`
-          : "",
-    });
+      ...batch,
+      movies: mergeMovieResults([], batch.movies.map(toMovie), sort),
+      message: [
+        resolvedDirector ? `Films directed by ${resolvedDirector}.` : "",
+        batch.unavailable ? "Some IMDb ratings could not be retrieved. Rating checks are incomplete." : "",
+      ].filter(Boolean).join(" "),
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "TMDb is temporarily unavailable." }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error && error.message.startsWith("IMDb ratings") ? error.message : "Film search is temporarily unavailable. Please retry." }, { status: 502 });
   }
 }
 
@@ -148,21 +147,17 @@ function parseNumber(value: string | null) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function compareMovies(a: TmdbMovie, b: TmdbMovie, sort: string) {
-  if (sort === "vote_average.desc") return (b.vote_average ?? 0) - (a.vote_average ?? 0) || (b.vote_count ?? 0) - (a.vote_count ?? 0);
-  if (sort === "primary_release_date.asc") return (a.release_date ?? "9999").localeCompare(b.release_date ?? "9999");
-  if (sort === "primary_release_date.desc") return (b.release_date ?? "").localeCompare(a.release_date ?? "");
-  return (b.popularity ?? 0) - (a.popularity ?? 0);
-}
-
-function toMovie(movie: TmdbMovie) {
+function toMovie(movie: TmdbMovie & { rating: number | null; ratingStatus: "rated" | "unrated" | "unavailable" }) {
   return {
     id: movie.id,
     title: movie.title,
     year: movie.release_date?.slice(0, 4) ?? "",
     poster: movie.poster_path ? `https://image.tmdb.org/t/p/w342${movie.poster_path}` : "",
     overview: movie.overview ?? "",
-    rating: movie.vote_average ?? 0,
-    ratingSource: "tmdb" as const,
+    rating: movie.rating,
+    ratingStatus: movie.ratingStatus,
+    ratingSource: "imdb" as const,
+    popularity: movie.popularity ?? 0,
+    releaseDate: movie.release_date ?? "",
   };
 }

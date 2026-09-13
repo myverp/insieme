@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getImdbRating } from "@/app/lib/imdb";
 import { createClient } from "@/app/lib/supabase/server";
 import { ensureWatchlists, selectWatchlist } from "@/app/lib/watchlist";
 
@@ -34,9 +35,11 @@ export async function GET(request: NextRequest) {
     .order("added_at", { ascending: true });
   if (error) return databaseError(error);
 
-  const rows = data as MovieRow[];
+  const rows = await Promise.all((data as MovieRow[]).map(async (row) => ({
+    ...row, ...await getImdbRating({ tmdbId: Number(row.id) }),
+  })));
   const movies = rows.filter((row) => !row.watched_at).map(toMovie);
-  const history = rows.filter((row): row is MovieRow & { watched_at: string } => Boolean(row.watched_at)).map((row) => ({
+  const history = rows.filter((row): row is typeof row & { watched_at: string } => Boolean(row.watched_at)).map((row) => ({
     ...toMovie(row),
     watchedAt: row.watched_at,
   }));
@@ -130,8 +133,8 @@ function clampRating(value: number | undefined) {
   return Number.isFinite(value) ? Math.min(10, Math.max(0, value!)) : 0;
 }
 
-function toMovie(row: MovieRow) {
-  return { id: Number(row.id), title: row.title, year: row.year, poster: row.poster, overview: row.overview, rating: Number(row.rating), ratingSource: row.rating_source };
+function toMovie(row: Omit<MovieRow, "rating"> & { rating: number | null; ratingStatus: "rated" | "unrated" | "unavailable" }) {
+  return { id: Number(row.id), title: row.title, year: row.year, poster: row.poster, overview: row.overview, rating: row.rating, ratingStatus: row.ratingStatus, ratingSource: "imdb" as const };
 }
 
 function isRatingSource(value: MovieInput["ratingSource"]): value is NonNullable<MovieInput["ratingSource"]> {

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
+import { formatImdbRating } from "@/app/lib/imdb-rating";
 import { WatchlistSearch } from "@/app/watchlist-search";
 import { pickFilm } from "@/app/lib/film-picker";
 import type { HistoryMovie, Movie, MovieDetails, Review, WatchlistMember, WatchlistSummary } from "@/app/watchlist-types";
@@ -573,7 +574,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                         <Poster movie={movie} size="card" />
                         <span className="film-info">
                           <span className="film-title" title={movie.title}>{movie.title}</span>
-                          <span className="film-meta">{movie.year || "Year unknown"}{movie.ratingSource !== "legacy" ? ` · ${formatMovieRating(movie)}` : ""}</span>
+                          <span className="film-meta">{movie.year || "Year unknown"}{` · IMDb ${formatImdbRating(movie)}`}</span>
                         </span>
                       </button>
                     </li>
@@ -847,8 +848,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
                 <dl className="details-facts">
                   {details.releaseDate ? <div><dt>Released</dt><dd>{formatDate(details.releaseDate)}</dd></div> : null}
                   {details.runtime ? <div><dt>Runtime</dt><dd>{formatRuntime(details.runtime)}</dd></div> : null}
-                  {details.tmdbRating ? <div><dt>TMDb score</dt><dd>{details.tmdbRating.toFixed(1)} / 10</dd></div> : null}
-                  {details.imdbRating ? <div><dt>IMDb rating</dt><dd>{details.imdbRating.toFixed(1)} / 10</dd></div> : null}
+                  <div><dt>IMDb rating</dt><dd>{formatImdbRating({ rating: details.imdbRating, ratingStatus: details.ratingStatus })}</dd></div>
                   {details.director ? <div><dt>Director</dt><dd>{details.director}</dd></div> : null}
                 </dl>
 
@@ -967,7 +967,7 @@ function ReviewsPanel({ reviews, loading, error, text, rating, saving, onTextCha
           placeholder="What did you think?"
         />
         <div className="review-rating-field">
-          <span className="review-rating-label">Rating <span>(optional)</span></span>
+          <span className="review-rating-label">Your rating <span>(optional)</span></span>
           <StarRating value={rating} onChange={onRatingChange} disabled={saving || loading} />
         </div>
         <div className="review-actions">
@@ -1079,14 +1079,6 @@ function formatReviewRating(rating: number) {
   return `${(rating / 2).toFixed(1)} / 5`;
 }
 
-function formatRating(rating: number) {
-  return rating ? rating.toFixed(1) : "N/A";
-}
-
-function formatMovieRating(movie: Movie) {
-  const source = movie.ratingSource === "legacy" ? "Legacy rating" : movie.ratingSource === "imdb" ? "IMDb" : "TMDb";
-  return `${source} ${formatRating(movie.rating)}`;
-}
 
 function formatRuntime(minutes: number) {
   const hours = Math.floor(minutes / 60);

@@ -1,3 +1,4 @@
+import type { RatingStatus } from "@/app/lib/imdb-rating";
 import type { Profile } from "@/app/profile/avatar";
 
 export type Movie = {
@@ -6,7 +7,10 @@ export type Movie = {
   year: string;
   poster: string;
   overview: string;
-  rating: number;
+  rating: number | null;
+  ratingStatus: RatingStatus;
+  popularity?: number;
+  releaseDate?: string;
   ratingSource: "tmdb" | "imdb" | "legacy";
 };
 
@@ -29,8 +33,8 @@ export type MovieDetails = {
   overview: string;
   releaseDate: string;
   runtime: number;
-  tmdbRating: number;
-  imdbRating: number;
+  imdbRating: number | null;
+  ratingStatus: RatingStatus;
   genres: string[];
   countries: string[];
   director: string;
