@@ -11,9 +11,9 @@ Insieme is a shared place to discover films and choose what to watch together. P
 | Field | #FFFFFF | #1C2736 |
 | Selected / subtle action | #E5EFE7 | #28374A |
 | Border | #DDD7CA | #36465B |
-| Field boundary | #92988F | #667A93 |
+| Field boundary | #858E82 | #667A93 |
 | Main text | #1B2921 | #E8EDF3 |
-| Supporting text | #6A716A | #AAB7C7 |
+| Supporting text | #646D64 | #AAB7C7 |
 | Action / active tab | #286044 | #91B8DA |
 | Action hover / focus | #19472F | #B8D3E9 |
 | Text on filled action | #FFFFFF | #141C28 |

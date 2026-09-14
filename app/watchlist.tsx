@@ -184,6 +184,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "The Watchlist could not be created.");
+      setReady(false);
+      setWatchlist([]);
+      setHistory([]);
       setNewListName("");
       managerDialog.current?.close();
       router.refresh();
@@ -259,6 +262,9 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
       });
       const data = (await response.json()) as { action?: "deleted" | "left"; error?: string };
       if (!response.ok || !data.action) throw new Error(data.error ?? "The Watchlist could not be updated.");
+      setReady(false);
+      setWatchlist([]);
+      setHistory([]);
       managerDialog.current?.close();
       toast.success(data.action === "deleted" ? "Watchlist deleted." : "You left the Watchlist.");
       router.refresh();
@@ -298,7 +304,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     try {
       await saveMovie(movie);
       setWatchlist((current) => [...current.filter((item) => item.id !== movie.id), movie]);
-      toast.success(`Added “${movie.title}” to our list ♡`);
+      toast.success(`Added “${movie.title}” to “${currentWatchlist?.name ?? "Watchlist"}”.`);
     } catch (error) {
       setWatchlist((current) => current.filter((item) => item.id !== movie.id));
       const errorMessage = error instanceof Error ? error.message : "The film could not be added.";
@@ -314,7 +320,7 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
     try {
       const watchedAt = await markMovieWatched(movie.id);
       setHistory((current) => [{ ...movie, watchedAt }, ...current.filter((item) => item.id !== movie.id)]);
-      toast.success(`Marked “${movie.title}” as watched ♡`);
+      toast.success(`Marked “${movie.title}” as watched.`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "The film could not be marked as watched.";
       toast.error(errorMessage);
@@ -655,7 +661,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
         <button className="dialog-close" type="button" onClick={() => managerDialog.current?.close()} aria-label="Close Watchlist manager">×</button>
         <div className="manager-content">
           <header className="details-heading">
-            <p>Watchlists</p>
             <h2 id="watchlist-manager-title">Watchlists</h2>
 
           </header>
@@ -664,7 +669,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile }: 
             <div className="manager-section-heading">
               <div>
                 <h3 id="your-watchlists-title">Your Watchlists</h3>
-                <p>Switch between the lists you belong to.</p>
               </div>
             </div>
             <div className="manager-list">
