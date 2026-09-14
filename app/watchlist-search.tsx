@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
+import { FilmPoster } from "@/app/film-poster";
 import { formatImdbRating } from "@/app/lib/imdb-rating";
-import { mergeMovieResults } from "@/app/lib/movie-results";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
-import type { HistoryMovie, Movie, WatchlistMember } from "@/app/watchlist-types";
-import { ProfileAvatar } from "@/app/profile/avatar";
+import type { HistoryMovie, Movie } from "@/app/watchlist-types";
 
 const GENRES = [
   [28, "Action"], [12, "Adventure"], [16, "Animation"], [35, "Comedy"], [80, "Crime"],
@@ -33,50 +33,48 @@ const EMPTY_FILTERS: SearchFilters = {
 
 type WatchlistSearchProps = {
   watchlistName: string;
-  members: WatchlistMember[] | null;
+  disabled: boolean;
   watchlist: Movie[];
   history: HistoryMovie[];
   inputRef: RefObject<HTMLInputElement | null>;
   onViewWatchlist: () => void;
   onAdd: (movie: Movie) => Promise<void>;
-  onOpenDetails: (movie: Movie) => Promise<void>;
 };
 
-export function WatchlistSearch({ watchlistName, members, watchlist, history, inputRef, onAdd, onOpenDetails, onViewWatchlist }: WatchlistSearchProps) {
-  const [visibleCount, setVisibleCount] = useState(4);
-  const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<SearchFilters>(EMPTY_FILTERS);
+export function WatchlistSearch({ watchlistName, watchlist, history, disabled, inputRef, onAdd, onViewWatchlist }: WatchlistSearchProps) {
+  const params = useSearchParams();
+  const initialParams = useRef(params.toString());
+  const [visibleCount, setVisibleCount] = useState(12);
+  const [query, setQuery] = useState(params.get("query") ?? "");
+  const [filters, setFilters] = useState<SearchFilters>(() => ({ genre: params.get("genre") ?? "", director: params.get("director") ?? "", decade: params.get("decade") ?? "", minRating: params.get("minRating") ?? "", sort: params.get("sort") ?? EMPTY_FILTERS.sort }));
   const [results, setResults] = useState<Movie[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [nextPage, setNextPage] = useState<number | null>(null);
-  const [scope, setScope] = useState("");
-  const [failedRatings, setFailedRatings] = useState(0);
-  const inspectedCount = useRef(0);
-  const submittedSearch = useRef({ query: "", filters: EMPTY_FILTERS });
-  const [searchAttempted, setSearchAttempted] = useState(false);
+  const [searchAttempted, setSearchAttempted] = useState(Boolean(params.get("query") || params.get("genre") || params.get("director") || params.get("decade") || params.get("minRating") || params.get("sort")));
   const [searchError, setSearchError] = useState(false);
   const searchRequest = useRef<AbortController | null>(null);
   const filterDialog = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => () => searchRequest.current?.abort(), []);
+  useEffect(() => {
+    const request = new AbortController();
+    searchRequest.current = request;
+    fetch(`/api/movies?${initialParams.current}`, { signal: request.signal }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Film discovery is unavailable.");
+      setResults(data.movies ?? []);
+      setMessage(data.message ?? "");
+    }).catch((error) => {
+      if (error.name !== "AbortError") { setSearchError(true); setSearchAttempted(true); setMessage(error.message); }
+    }).finally(() => { if (!request.signal.aborted) setLoading(false); });
+    return () => searchRequest.current?.abort();
+  }, []);
 
-  async function searchMovies(activeFilters = filters, page = 1, retryQuery?: string) {
-    const trimmedQuery = retryQuery ?? (page === 1 ? query.trim() : submittedSearch.current.query);
-    if (page !== 1) activeFilters = submittedSearch.current.filters;
-    const hasFilters = Boolean(
-      activeFilters.genre
-      || activeFilters.director.trim()
-      || activeFilters.decade
-      || activeFilters.minRating
-      || activeFilters.sort !== EMPTY_FILTERS.sort
-    );
-
-    if (!trimmedQuery && !hasFilters) {
-      resetResults();
-      return;
-    }
+  async function searchMovies(activeFilters = filters, searchQuery = query) {
+    const trimmedQuery = searchQuery.trim();
     if (trimmedQuery.length === 1) {
+      searchRequest.current?.abort();
+      searchRequest.current = null;
+      setLoading(false);
       resetResults();
       setMessage("Type at least two characters.");
       return;
@@ -85,36 +83,26 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
     searchRequest.current?.abort();
     const request = new AbortController();
     searchRequest.current = request;
-    setSearchAttempted(true);
+    setSearchAttempted(Boolean(trimmedQuery || Object.entries(activeFilters).some(([key, value]) => value !== EMPTY_FILTERS[key as keyof SearchFilters])));
     setSearchError(false);
     setLoading(true);
     setMessage("");
-    if (page === 1) {
-      submittedSearch.current = { query: trimmedQuery, filters: activeFilters };
-      setResults([]);
-      setNextPage(null);
-      setScope("");
-      inspectedCount.current = 0;
-      setFailedRatings(0);
-    }
 
     try {
-      const searchParams = new URLSearchParams({ query: trimmedQuery, ...activeFilters, page: String(page) });
+      const searchParams = new URLSearchParams({ query: trimmedQuery, ...activeFilters });
+      const locationParams = new URLSearchParams();
+      if (trimmedQuery) locationParams.set("query", trimmedQuery);
+      Object.entries(activeFilters).forEach(([key, value]) => { if (value && value !== EMPTY_FILTERS[key as keyof SearchFilters]) locationParams.set(key, value); });
+      window.history.replaceState(null, "", locationParams.size ? `/?${locationParams}` : "/");
       const response = await fetch(`/api/movies?${searchParams}`, { signal: request.signal });
-      const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string; inspected?: number; unavailable?: number; nextPage?: number | null; providerLimitReached?: boolean };
+      const data = (await response.json()) as { movies?: Movie[]; error?: string; message?: string };
       if (!response.ok) throw new Error(data.error ?? "Film search is unavailable.");
-      if (searchRequest.current !== request) return;
-      setResults((previous) => mergeMovieResults(page === 1 ? [] : previous, data.movies ?? [], activeFilters.sort));
-      setVisibleCount((previous) => page === 1 ? 4 : previous + 4);
-      setNextPage(data.nextPage ?? null);
-      inspectedCount.current += data.inspected ?? 0;
-      setFailedRatings((count) => (page === 1 ? 0 : count) + (data.unavailable ?? 0));
-      setScope(`Checked ${inspectedCount.current} matching candidates. Filtering and sorting apply only to loaded films.` + (data.providerLimitReached ? " The provider page limit was reached; narrow your search." : data.nextPage ? " Load more to extend the results." : " All accessible candidate pages for this search have been checked."));
-      setMessage(data.message ?? "");
+      setResults(data.movies ?? []);
+      setVisibleCount(12);
+      setMessage(data.movies?.length ? (data.message ?? "") : (data.message || "No films found."));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      if (searchRequest.current !== request) return;
-      if (page === 1) setResults([]);
+      setResults([]);
       setSearchError(true);
       setMessage(error instanceof Error ? error.message : "Film search is unavailable.");
     } finally {
@@ -126,13 +114,6 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
   }
 
   function resetResults() {
-    searchRequest.current?.abort();
-    searchRequest.current = null;
-    setLoading(false);
-    setNextPage(null);
-    setScope("");
-    inspectedCount.current = 0;
-    setFailedRatings(0);
     setResults([]);
     setMessage("");
     setSearchAttempted(false);
@@ -143,8 +124,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
     searchRequest.current?.abort();
     searchRequest.current = null;
     setQuery("");
-    setLoading(false);
-    resetResults();
+    void searchMovies(filters, "");
     inputRef.current?.focus();
   }
 
@@ -154,8 +134,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
 
   function resetFilters() {
     setFilters(EMPTY_FILTERS);
-    if (query.trim().length >= 2) void searchMovies(EMPTY_FILTERS);
-    else resetResults();
+    void searchMovies(EMPTY_FILTERS);
   }
 
   const activeFilterCount = [
@@ -170,7 +149,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
     filters.genre ? { name: "genre" as const, label: GENRES.find(([id]) => String(id) === filters.genre)?.[1] ?? "Genre" } : null,
     filters.director.trim() ? { name: "director" as const, label: `Director: ${filters.director.trim()}` } : null,
     filters.decade ? { name: "decade" as const, label: `${filters.decade}s` } : null,
-    filters.minRating ? { name: "minRating" as const, label: `${filters.minRating}+ IMDb` } : null,
+    filters.minRating ? { name: "minRating" as const, label: `${filters.minRating}+ TMDb` } : null,
     filters.sort !== EMPTY_FILTERS.sort ? { name: "sort" as const, label: sortLabel(filters.sort) } : null,
   ].filter((item): item is { name: keyof SearchFilters; label: string } => Boolean(item));
 
@@ -182,14 +161,7 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
 
   return (
     <section className="search-panel" aria-labelledby="add-film-heading" aria-busy={loading}>
-      <div className="discovery-context">
-        <div><strong>{watchlistName}</strong></div>
-        {members ? <ul className="discovery-members" aria-label="Watchlist members">
-          {members.slice(0, 4).map((member) => <li key={member.profile.userId} title={member.profile.displayName}><ProfileAvatar displayName={member.profile.displayName} small /><span className="sr-only">{member.profile.displayName}</span></li>)}
-          {members.length > 4 ? <li>+{members.length - 4}<span className="sr-only"> more Members</span></li> : null}
-        </ul> : null}
-      </div>
-      <h2 id="add-film-heading">Add a film</h2>
+      <div className="discovery-heading"><div><p className="eyebrow">DISCOVER</p><h1 id="add-film-heading">Find your next film.</h1></div></div>
       <label className="sr-only" htmlFor="film-search">Search by title</label>
       <form className="search-row" onSubmit={(event) => { event.preventDefault(); void searchMovies(); }}>
         <div className="search-input-wrap">
@@ -208,17 +180,13 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
         <button type="submit" disabled={loading}>{loading ? "Searching…" : "Search"}</button>
       </form>
 
-      <details className="advanced-search desktop-advanced-search">
-        <summary>
-          <span>Advanced search</span>
-          {activeFilterCount ? <span className="filter-count">{activeFilterCount}</span> : null}
-        </summary>
+      <div className="advanced-search desktop-advanced-search" aria-label="Film filters">
         <FilterFields filters={filters} updateFilter={updateFilter} />
         <div className="advanced-actions">
           <button type="button" className="filter-search-button" onClick={() => void searchMovies()} disabled={loading}>Search</button>
           {activeFilterCount ? <button type="button" className="reset-filters" onClick={resetFilters}>Reset</button> : null}
         </div>
-      </details>
+      </div>
 
       <button className="mobile-filter-button" type="button" onClick={() => filterDialog.current?.showModal()}>
         <FilterIcon />
@@ -232,7 +200,6 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
           <header className="details-heading">
             <p>Discovery</p>
             <h2 id="filter-dialog-title">Filter films</h2>
-            <p className="tagline">Narrow the results without losing your place.</p>
           </header>
           <FilterFields filters={filters} updateFilter={updateFilter} />
           <div className="advanced-actions">
@@ -262,29 +229,27 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
         </div>
       ) : null}
 
-      {failedRatings > 0 && !loading ? <p className="status" role="status">{failedRatings} candidate ratings could not be checked; rating matches may be missing. <button type="button" onClick={() => { setQuery(submittedSearch.current.query); setFilters(submittedSearch.current.filters); void searchMovies(submittedSearch.current.filters, 1, submittedSearch.current.query); }}>Retry search</button></p> : null}
-      {scope ? <p className="status" role="status">{scope}</p> : null}
-      {message && !loading ? <p className="status" role={searchError ? "alert" : "status"}>{message}</p> : null}
+      {message && !loading ? <p className="status" role="status">{message}</p> : null}
       {loading || results.length || searchAttempted ? (
         <div className="results-block">
-          <div className="results-heading"><h3>Search results</h3>{results.length ? <span aria-live="polite">{Math.min(visibleCount, results.length)} of {results.length} found</span> : null}</div>
+          <div className="results-heading"><h2>{searchAttempted ? "Search results" : "Popular films"}</h2>{results.length ? <span aria-live="polite">{Math.min(visibleCount, results.length)} of {results.length} found</span> : null}</div>
           {loading ? <SearchSkeleton /> : results.length ? (
-            <ul className="search-results" aria-label="Film search results">
-              {results.slice(0, visibleCount).map((movie) => {
+            <ul className="search-results" aria-label="Film results">
+              {results.slice(0, visibleCount).map((movie, index) => {
                 const added = watchlist.some((item) => item.id === movie.id);
                 const watched = history.some((item) => item.id === movie.id);
                 return (
                   <li className="group" key={movie.id}>
-                    <button className="result-details-trigger" type="button" onClick={() => void onOpenDetails(movie)} aria-haspopup="dialog" aria-label={`View details for ${movie.title}`}>
-                      <SearchPoster movie={movie} />
+                    <Link className="result-details-trigger" href={`/films/${movie.id}?from=${encodeURIComponent("/?" + params.toString())}`} aria-label={`View details for ${movie.title}`} prefetch={false}>
+                      <FilmPoster movie={movie} eager={index < 6} />
                       <span className="result-info">
                         <strong title={movie.title}>{movie.title}</strong>
                         <span>{movie.year || "Year unknown"} · IMDb {formatImdbRating(movie)}</span>
                       </span>
-                    </button>
+                    </Link>
                     <div className="result-actions">
-                      <button type="button" onClick={() => void onAdd(movie)} disabled={added || watched}>
-                        {watched ? "Watched" : added ? "Added" : "Add"}
+                      <button type="button" onClick={() => void onAdd(movie)} disabled={disabled || added || watched}>
+                        {watched ? "Watched" : added ? "Added" : "+ Watchlist"}
                       </button>
                     </div>
                   </li>
@@ -294,14 +259,13 @@ export function WatchlistSearch({ watchlistName, members, watchlist, history, in
           ) : (
             <div className={`search-empty${searchError ? " search-empty-error" : ""}`} role={searchError ? "alert" : "status"}>
               <span className="empty-state-icon" aria-hidden="true">{searchError ? "!" : "⌕"}</span>
-              <strong>{searchError ? "Search unavailable" : "No matches in checked films"}</strong>
+              <strong>{searchError ? "Search unavailable" : "No films found"}</strong>
               <span>{searchError ? message : "Try a different title or loosen your filters."}</span>
             </div>
           )}
         </div>
       ) : null}
-      {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 4)}>Show more films</button> : null}
-      {!loading && nextPage && results.length <= visibleCount ? <button className="show-more-results" type="button" onClick={() => void searchMovies(submittedSearch.current.filters, nextPage)}>{searchError ? "Retry loading more films" : "Load more films"}</button> : null}
+      {!loading && results.length > visibleCount ? <button className="show-more-results" type="button" onClick={() => setVisibleCount((count) => count + 12)}>Show more films</button> : null}
       {!loading && results.length > 0 ? <div className="watchlist-bridge">
         <span>{watchlistName}</span>
         <button type="button" onClick={onViewWatchlist}>View Watchlist ({watchlist.length})</button>
@@ -332,19 +296,19 @@ function FilterFields({ filters, updateFilter }: { filters: SearchFilters; updat
         </select>
       </label>
       <label>
-        <span>Minimum IMDb rating</span>
+        <span>Minimum rating</span>
         <select value={filters.minRating} onChange={(event) => updateFilter("minRating", event.target.value)}>
           <option value="">Any rating</option>
-          <option value="6">6+ on IMDb</option>
-          <option value="7">7+ on IMDb</option>
-          <option value="8">8+ on IMDb</option>
+          <option value="6">6+ on TMDb</option>
+          <option value="7">7+ on TMDb</option>
+          <option value="8">8+ on TMDb</option>
         </select>
       </label>
       <label>
         <span>Sort by</span>
         <select value={filters.sort} onChange={(event) => updateFilter("sort", event.target.value)}>
           <option value="popularity.desc">Most popular</option>
-          <option value="imdb_rating.desc">Highest IMDb (loaded films)</option>
+          <option value="vote_average.desc">Highest rated</option>
           <option value="primary_release_date.desc">Newest first</option>
           <option value="primary_release_date.asc">Oldest first</option>
         </select>
@@ -354,7 +318,7 @@ function FilterFields({ filters, updateFilter }: { filters: SearchFilters; updat
 }
 
 function sortLabel(sort: string) {
-  if (sort === "imdb_rating.desc") return "Highest IMDb (loaded films)";
+  if (sort === "vote_average.desc") return "Highest rated";
   if (sort === "primary_release_date.desc") return "Newest first";
   if (sort === "primary_release_date.asc") return "Oldest first";
   return "Most popular";
@@ -364,15 +328,16 @@ function FilterIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>;
 }
 
-function SearchPoster({ movie }: { movie: Movie }) {
-  if (!movie.poster) return <span className="poster-placeholder poster-card" aria-label="No poster available">No poster</span>;
-  return <Image className="poster poster-card" src={movie.poster} alt={`${movie.title} poster`} width={342} height={513} sizes="(max-width: 430px) 104px, (max-width: 700px) 50vw, 25vw" />;
-}
 
 function SearchSkeleton() {
   return (
     <ul className="search-results film-grid-skeleton" aria-label="Loading film results">
-      {Array.from({ length: 5 }, (_, index) => <li className="skeleton-card" key={index}><span className="skeleton-poster" /><span className="skeleton-lines"><i /><i /></span></li>)}
+      {Array.from({ length: 6 }, (_, index) => <li className="skeleton-card" key={index}><span className="skeleton-poster" /><span className="skeleton-lines"><i /><i /></span></li>)}
     </ul>
   );
 }
+
+function formatRating(rating: number) {
+  return rating ? rating.toFixed(1) : "N/A";
+}
+

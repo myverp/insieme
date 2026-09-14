@@ -41,9 +41,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Page must be an integer between 1 and 500." }, { status: 400 });
   }
 
-  if ((!query || query.length < 2) && !hasFilters) {
-    return NextResponse.json({ error: "Enter a title or choose at least one filter." }, { status: 400 });
-  }
   if (query.length === 1) {
     return NextResponse.json({ error: "Enter at least two characters." }, { status: 400 });
   }

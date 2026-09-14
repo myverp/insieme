@@ -25,7 +25,9 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute = isAuthPage || pathname.startsWith("/auth/") || pathname.startsWith("/invite/") || pathname.startsWith("/api/movies");
 
   if (!isAuthenticated && !isPublicRoute && !pathname.startsWith("/api/")) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const loginUrl = new URL("/login", request.url);
+    if (pathname !== "/" || request.nextUrl.search) loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
+    return NextResponse.redirect(loginUrl);
   }
 
   if (isAuthenticated && isAuthPage) {

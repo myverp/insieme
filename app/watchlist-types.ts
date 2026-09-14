@@ -29,6 +29,7 @@ export type Review = {
 export type MovieDetails = {
   id: number;
   title: string;
+  poster: string;
   tagline: string;
   overview: string;
   releaseDate: string;

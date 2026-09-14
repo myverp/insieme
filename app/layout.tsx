@@ -9,7 +9,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `try{const t=localStorage.getItem('insieme-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch{}` }} />
+      </head>
       <body>
         {children}
         <Toaster

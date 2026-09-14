@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { acceptInvitation } from "@/app/invite/actions";
 import { createClient } from "@/app/lib/supabase/server";
 import { InsiemeLogo } from "@/app/logo";
+import { ThemeToggle } from "@/app/theme-toggle";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -21,8 +22,9 @@ export default async function InvitationPage({
   const next = `/invite/${token}`;
 
   return (
-    <main className="auth-shell">
+    <main className="auth-shell invitation-shell">
       <section className="auth-card invitation-card">
+        <ThemeToggle />
         <div className="auth-brand"><InsiemeLogo /></div>
         <h1>Join a shared Watchlist</h1>
         <p className="invitation-copy">You’ve been invited to discover and save films together.</p>

@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/server";
+import { safeDestination } from "@/app/lib/navigation";
 
 function credentials(formData: FormData) {
   const email = formData.get("email");
@@ -59,5 +60,5 @@ export async function logout() {
 }
 
 function safeNext(value: FormDataEntryValue | null) {
-  return typeof value === "string" && value.startsWith("/invite/") && !value.startsWith("//") ? value : null;
+  return safeDestination(value);
 }
