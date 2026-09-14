@@ -5,7 +5,6 @@ import { FilmPoster } from "@/app/film-poster";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/client";
-import { ThemeToggle } from "@/app/theme-toggle";
 import { InsiemeLogo } from "@/app/logo";
 import { ProfileAvatar, type Profile } from "@/app/profile/avatar";
 import { formatImdbRating } from "@/app/lib/imdb-rating";
@@ -51,7 +50,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
   const [reviewRating, setReviewRating] = useState<number | null>(null);
   const [reviewSaving, setReviewSaving] = useState(false);
   const [members, setMembers] = useState<WatchlistMember[]>([{ profile, role: currentWatchlist?.role ?? "owner" }]);
-  const [membersLoadedFor, setMembersLoadedFor] = useState<string | null>(null);
   const [listAction, setListAction] = useState<"switch" | "create" | "invite" | "rename" | "lifecycle" | null>(null);
   const [newListName, setNewListName] = useState("");
   const [invitationUrl, setInvitationUrl] = useState("");
@@ -80,7 +78,6 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
         const data = (await response.json()) as { members?: WatchlistMember[] };
         if (response.ok && data.members && !cancelled) {
           setMembers(data.members);
-          setMembersLoadedFor(watchlistId);
         }
       })
       .catch(() => {
@@ -656,36 +653,12 @@ export default function Watchlist({ watchlists, watchlistId, joined, profile, fi
     <main className="app-shell">
       <header className="simple-header">
         <Link href="/" className="header-brand" aria-label="Insieme home"><InsiemeLogo /></Link>
-        <nav className="primary-nav" aria-label="Main navigation">
-          <button type="button" aria-current={!film && view === "discover" ? "page" : undefined} onClick={() => setView("discover")}>Discover</button>
-          <button type="button" aria-current={!film && view === "watchlist" ? "page" : undefined} onClick={() => setView("watchlist")}>Watchlist <span>{ready ? watchlist.length : "—"}</span></button>
-          <button type="button" aria-current={!film && view === "history" ? "page" : undefined} onClick={() => setView("history")}>History</button>
+        <nav className="primary-navigation" aria-label="Main navigation">
+          {(["discover", "watchlist", "history"] as const).map((item) => <a key={item} href={`?view=${item}`} aria-current={!film && view === item ? "page" : undefined} onClick={(event) => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); setView(item); } }}>{item === "discover" ? "Discover" : item === "watchlist" ? "Watchlist" : "History"}</a>)}
         </nav>
-        <ThemeToggle />
+        <button className="watchlist-switcher" type="button" onClick={openManager} disabled={listAction !== null} aria-haspopup="dialog" aria-label={`Current Watchlist: ${currentWatchlist?.name}`}><span>{currentWatchlist?.name}</span><span aria-hidden="true">▾</span></button>
         <Link href="/profile" className="current-profile header-identity" aria-label={`Profile: ${profile.displayName}`}><ProfileAvatar displayName={profile.displayName} small /><span>{profile.displayName}</span></Link>
       </header>
-
-      <section className="shared-context" aria-label="Current Watchlist">
-        <div className="shared-context-title"><span className="eyebrow">SAVING TO</span>        <div className="header-right">
-          <div className="header-actions">
-            <label className="sr-only" htmlFor="watchlist-selector">Current Watchlist</label>
-            <select
-              id="watchlist-selector"
-              value={watchlistId}
-              onChange={(event) => void selectList(event.target.value)}
-              disabled={listAction !== null}
-            >
-              {watchlists.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
-            <button className="manage-watchlists-button" type="button" onClick={openManager} disabled={listAction !== null}>
-              <span className="manage-label-wide">Members & settings</span>
-              <span className="manage-label-short">Manage</span>
-            </button>
-          </div>
-        </div>
-</div>
-        <div className="shared-context-members"><div className="discovery-members">{membersLoadedFor === watchlistId ? members.slice(0, 4).map((member) => <span key={member.profile.userId} title={member.profile.displayName}><ProfileAvatar displayName={member.profile.displayName} small /><span className="sr-only">{member.profile.displayName}</span></span>) : null}</div><span>{membersLoadedFor === watchlistId ? `${members.length} ${members.length === 1 ? "member" : "members"}` : "Loading members…"}</span><button type="button" onClick={() => void copyInvitation()} disabled={listAction !== null}>{listAction === "invite" ? "Copying…" : "Invite a friend"}</button></div>
-      </section>
 
       {invitationUrl ? <div className="invitation-link" role="status"><label>Invitation link<input value={invitationUrl} readOnly onFocus={(event) => event.currentTarget.select()} /></label><p>Anyone with this private link can join {currentWatchlist.name}.</p><button type="button" onClick={() => setInvitationUrl("")}>Dismiss</button></div> : null}
       {watchlistError ? <div className="load-error" role="alert"><p>{watchlistError} Your saved films have not been changed.</p><button type="button" onClick={() => void refreshWatchlist().catch((error) => setWatchlistError(error.message))}>Retry</button></div> : null}
@@ -1207,4 +1180,5 @@ function ListIcon() {
     </svg>
   );
 }
+
 

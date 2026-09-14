@@ -5,7 +5,7 @@ import { logout } from "@/app/auth/actions";
 import { ProfileAvatar } from "./avatar";
 import { ensureProfile } from "./data";
 import { ProfileForm } from "./profile-form";
-import { ThemeToggle } from "@/app/theme-toggle";
+import { ThemeSettings } from "../theme-settings";
 
 export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const supabase = await createClient();
@@ -16,7 +16,6 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   const { error, saved } = await searchParams;
   return (
     <main className="profile-page">
-      <ThemeToggle />
       <Link href="/" className="back-link">Back to Watchlist</Link>
       <section className="profile-card" aria-labelledby="profile-title">
         <ProfileAvatar displayName={profile.displayName} />
@@ -25,6 +24,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           <h1 id="profile-title">Your profile</h1>
         </div>
         <ProfileForm displayName={profile.displayName} error={error} saved={saved === "1"} />
+        <ThemeSettings />
         <form action={logout} className="profile-logout-form">
           <button type="submit">Log out</button>
         </form>
@@ -32,3 +32,4 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
     </main>
   );
 }
+

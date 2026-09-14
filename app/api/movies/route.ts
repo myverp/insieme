@@ -31,7 +31,6 @@ export async function GET(request: NextRequest) {
   const requestedSort = params.get("sort") ?? "popularity.desc";
   const sort = allowedSorts.has(requestedSort) ? requestedSort : "popularity.desc";
   const token = process.env.TMDB_READ_TOKEN;
-  const hasFilters = Boolean(director || genre || decade || minRating !== null || sort !== "popularity.desc");
 
   if (minRating !== null && (!Number.isFinite(minRating) || minRating < 0 || minRating > 10)) {
     return NextResponse.json({ error: "Minimum IMDb rating must be between 0 and 10." }, { status: 400 });

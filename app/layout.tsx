@@ -10,9 +10,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: `try{const t=localStorage.getItem('insieme-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch{}` }} />
-      </head>
+      <head><script dangerouslySetInnerHTML={{ __html: `try{var t=localStorage.getItem('insieme-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:'system'}catch{}` }} /></head>
       <body>
         {children}
         <Toaster
@@ -31,3 +29,4 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
+

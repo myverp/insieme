@@ -239,7 +239,7 @@ export function WatchlistSearch({ watchlistName, watchlist, history, disabled, i
                 const added = watchlist.some((item) => item.id === movie.id);
                 const watched = history.some((item) => item.id === movie.id);
                 return (
-                  <li className="group" key={movie.id}>
+                  <li className="group discovery-card" key={movie.id}>
                     <Link className="result-details-trigger" href={`/films/${movie.id}?from=${encodeURIComponent("/?" + params.toString())}`} aria-label={`View details for ${movie.title}`} prefetch={false}>
                       <FilmPoster movie={movie} eager={index < 6} />
                       <span className="result-info">
@@ -247,11 +247,7 @@ export function WatchlistSearch({ watchlistName, watchlist, history, disabled, i
                         <span>{movie.year || "Year unknown"} · IMDb {formatImdbRating(movie)}</span>
                       </span>
                     </Link>
-                    <div className="result-actions">
-                      <button type="button" onClick={() => void onAdd(movie)} disabled={disabled || added || watched}>
-                        {watched ? "Watched" : added ? "Added" : "+ Watchlist"}
-                      </button>
-                    </div>
+                    <DiscoveryAddAction movie={movie} disabled={disabled} added={added} watched={watched} onAdd={onAdd} />
                   </li>
                 );
               })}
@@ -337,7 +333,23 @@ function SearchSkeleton() {
   );
 }
 
-function formatRating(rating: number) {
-  return rating ? rating.toFixed(1) : "N/A";
+function DiscoveryAddAction({ movie, disabled, added, watched, onAdd }: { movie: Movie; disabled: boolean; added: boolean; watched: boolean; onAdd: (movie: Movie) => Promise<void> }) {
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  async function add() {
+    if (pending || added || watched || disabled) return;
+    setPending(true);
+    setFailed(false);
+    try { await onAdd(movie); } catch { setFailed(true); }
+    finally { setPending(false); }
+  }
+  const label = pending ? "Adding" : watched ? "Watched" : added ? "In Watchlist" : failed ? "Retry adding" : "+ Watchlist";
+  return <div className="result-actions" data-visible={pending || failed || added || watched || undefined}>
+    <button type="button" onClick={() => void add()} disabled={disabled || pending || added || watched} aria-label={`${label}: ${movie.title}`}>
+      {pending ? "Adding…" : watched ? "Watched" : added ? "In Watchlist" : failed ? "Retry adding" : "+ Watchlist"}
+    </button>
+    {failed ? <span className="card-error" role="alert">Could not add. Try again.</span> : null}
+  </div>;
 }
+
 
